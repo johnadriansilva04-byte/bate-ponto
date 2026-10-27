@@ -14,48 +14,64 @@ export type Database = {
   }
   public: {
     Tables: {
-      user_settings: {
+      monthly_rates: {
         Row: {
+          days_worked: number
           hourly_rate: number | null
+          installation_id: string
+          month: number
+          session_count: number
+          total_seconds: number
           updated_at: string
-          user_id: string
+          year: number
         }
         Insert: {
+          days_worked?: number
           hourly_rate?: number | null
+          installation_id?: string
+          month: number
+          session_count?: number
+          total_seconds?: number
           updated_at?: string
-          user_id?: string
+          year: number
         }
         Update: {
+          days_worked?: number
           hourly_rate?: number | null
+          installation_id?: string
+          month?: number
+          session_count?: number
+          total_seconds?: number
           updated_at?: string
-          user_id?: string
+          year?: number
         }
         Relationships: []
       }
       work_sessions: {
         Row: {
           created_at: string
+          duration_seconds: number | null
           ended_at: string | null
           id: string
+          installation_id: string
           started_at: string
           updated_at: string
-          user_id: string
         }
         Insert: {
           created_at?: string
           ended_at?: string | null
           id?: string
+          installation_id?: string
           started_at?: string
           updated_at?: string
-          user_id?: string
         }
         Update: {
           created_at?: string
           ended_at?: string | null
           id?: string
+          installation_id?: string
           started_at?: string
           updated_at?: string
-          user_id?: string
         }
         Relationships: []
       }

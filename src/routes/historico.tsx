@@ -77,7 +77,7 @@ function History() {
         report.weeks.map((w, i) => <WeekTable key={i} index={i} week={w} />)
       )}
 
-      <Summary report={report} />
+      <Summary report={report} ym={ym} />
       <FixDialog session={fixing} onClose={() => setFixing(null)} />
     </div>
   );
@@ -150,18 +150,23 @@ function WeekTable({ week, index }: { week: ReturnType<typeof buildMonth>["weeks
   );
 }
 
-function Summary({ report }: { report: ReturnType<typeof buildMonth> }) {
+function Summary({ report, ym }: { report: ReturnType<typeof buildMonth>; ym: { y: number; m: number } }) {
   const qc = useQueryClient();
-  const rateQ = useQuery({ queryKey: ["rate"], queryFn: fetchRate });
+  const rateQ = useQuery({ queryKey: ["rate", ym.y, ym.m], queryFn: () => fetchRate(ym.y, ym.m) });
   const [text, setText] = useState("");
   useEffect(() => {
-    if (rateQ.data != null) setText(String(rateQ.data).replace(".", ","));
-  }, [rateQ.data]);
+    setText(rateQ.data != null ? String(rateQ.data).replace(".", ",") : "");
+  }, [rateQ.data, ym.y, ym.m]);
   const parsed = text.trim() ? Number(text.replace(/\./g, "").replace(",", ".")) : null;
   const valid = parsed !== null && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  const totals = {
+    totalSeconds: report.totalSeconds,
+    daysWorked: report.daysWorked,
+    sessionCount: report.sessionCount,
+  };
   const save = useMutation({
-    mutationFn: () => saveRate(valid),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["rate"] }),
+    mutationFn: () => saveRate(ym.y, ym.m, valid, totals),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rate", ym.y, ym.m] }),
     onError: () => toast.error("Não foi possível salvar o valor."),
   });
 
