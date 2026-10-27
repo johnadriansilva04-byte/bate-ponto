@@ -8,3 +8,4 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+- Hours math lives in src/lib/hours.ts as pure functions (UTC in, America/Sao_Paulo display) so it stays unit-tested; UI only renders its output.
