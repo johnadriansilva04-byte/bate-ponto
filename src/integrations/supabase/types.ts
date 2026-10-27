@@ -14,7 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      user_settings: {
+        Row: {
+          hourly_rate: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          hourly_rate?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          hourly_rate?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      work_sessions: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          id: string
+          started_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
