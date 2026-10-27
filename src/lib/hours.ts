@@ -17,7 +17,8 @@ const partsFmt = new Intl.DateTimeFormat("en-US", {
 export function tzParts(d: Date) {
   const p: Record<string, number> = {};
   for (const x of partsFmt.formatToParts(d)) if (x.type !== "literal") p[x.type] = Number(x.value);
-  return { y: p.year, m: p.month, d: p.day, hh: p.hour, mm: p.minute, ss: p.second };
+  const g = (k: string) => p[k] ?? 0;
+  return { y: g("year"), m: g("month"), d: g("day"), hh: g("hour"), mm: g("minute"), ss: g("second") };
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -138,7 +139,7 @@ export function buildMonth(year: number, month: number, sessions: Session[], now
     const seconds = perDay.get(key) ?? 0;
     const daySessions = (startedOn.get(key) ?? []).sort((a, b) => a.started_at.localeCompare(b.started_at));
     daySessions.forEach((s) => monthSessions.add(s.id));
-    cur.days.push({ key, day: d, weekday: WEEKDAYS[wd], sessions: daySessions, seconds, isToday: key === todayKey });
+    cur.days.push({ key, day: d, weekday: WEEKDAYS[wd] ?? "", sessions: daySessions, seconds, isToday: key === todayKey });
     cur.seconds += seconds;
     total += seconds;
     if (seconds > 0) daysWorked++;

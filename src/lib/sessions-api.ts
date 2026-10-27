@@ -61,8 +61,8 @@ export async function saveRate(rate: number | null) {
 
 /** "2026-05-05T17:30" in São Paulo local time -> ISO UTC */
 export function localInputToIso(v: string): string {
-  const [date, time] = v.split("T");
-  const [y, m, d] = date.split("-").map(Number);
-  const [hh, mm] = time.split(":").map(Number);
+  const [date = "", time = "0:0"] = v.split("T");
+  const [y = 0, m = 1, d = 1] = date.split("-").map(Number);
+  const [hh = 0, mm = 0] = time.split(":").map(Number);
   return new Date(localMidnight(y, m, d) + hh * 3600000 + mm * 60000).toISOString();
 }

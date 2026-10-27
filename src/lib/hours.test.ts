@@ -21,7 +21,7 @@ describe("hours", () => {
 
   it("builds May 2026 weeks Monday-Sunday with real day counts", () => {
     const r = buildMonth(2026, 5, []);
-    expect(r.weeks[0].days.map((d) => d.weekday)).toEqual(["Sex.", "Sáb.", "Dom."]);
+    expect(r.weeks[0]!.days.map((d) => d.weekday)).toEqual(["Sex.", "Sáb.", "Dom."]);
     expect(r.weeks.reduce((n, w) => n + w.days.length, 0)).toBe(31);
     expect(buildMonth(2028, 2, []).weeks.reduce((n, w) => n + w.days.length, 0)).toBe(29);
   });
