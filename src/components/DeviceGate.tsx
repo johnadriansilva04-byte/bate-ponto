@@ -5,12 +5,15 @@
 // na propria instalacao.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Loader2, Smartphone, WifiOff } from "lucide-react";
+import { Check, Loader2, Smartphone, WifiOff } from "lucide-react";
 import { authorizeThisDevice, fetchDeviceState } from "@/lib/sessions-api";
 import type { PinResult } from "@/lib/pin";
 import { PinPad } from "@/components/PinPad";
 
 type Estado = "checando" | "liberado" | "precisa_senha" | "sem_internet";
+
+/** Botao principal: grande, verde, impossivel de errar. */
+const BOTAO = "min-h-20 w-full rounded-2xl bg-primary px-6 font-display text-2xl font-extrabold text-primary-foreground shadow-button active:translate-y-1";
 
 export function DeviceGate({ children }: { children: ReactNode }) {
   const [estado, setEstado] = useState<Estado>("checando");
@@ -61,15 +64,10 @@ export function DeviceGate({ children }: { children: ReactNode }) {
   if (estado === "sem_internet") {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 text-center">
-        <WifiOff className="h-14 w-14 text-warning" />
-        <p className="text-2xl font-bold">Sem internet</p>
-        <p className="text-lg text-muted-foreground">
-          Não deu para confirmar este aparelho agora. Confira a internet e tente de novo.
-        </p>
-        <button
-          onClick={() => void checar()}
-          className="min-h-16 rounded-2xl bg-primary px-6 text-lg font-extrabold text-primary-foreground"
-        >
+        <WifiOff className="h-16 w-16 text-warning" />
+        <h1 className="font-display text-3xl font-extrabold text-foreground">Sem internet</h1>
+        <p className="text-xl">Ligue a internet do celular e toque no botão.</p>
+        <button onClick={() => void checar()} className={BOTAO}>
           TENTAR DE NOVO
         </button>
       </div>
@@ -80,25 +78,38 @@ export function DeviceGate({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center gap-5 text-center">
       <Smartphone className="h-16 w-16 text-primary" />
-      <h1 className="font-display text-3xl font-extrabold text-primary">Aparelho novo</h1>
-      <p className="text-lg">
-        Este aplicativo é de uso pessoal, num celular só. Para usá-lo neste aparelho, digite a mesma senha de 6 números
-        que você usa para bater o ponto.
-      </p>
+      <h1 className="font-display text-4xl font-extrabold text-primary">Celular novo</h1>
+
+      {/* Uma ideia por linha, em letra grande. Nada de paragrafo longo. */}
+      <div className="w-full space-y-3 text-xl">
+        <p>Este aplicativo é só seu.</p>
+        <p className="font-bold">Agora ele vai liberar este celular.</p>
+      </div>
+
+      <div className="w-full rounded-2xl bg-accent p-4 text-lg text-accent-foreground">
+        <p className="flex items-center justify-center gap-2 font-bold">
+          <Check className="h-6 w-6" /> Você digita a senha só uma vez.
+        </p>
+        <p className="mt-1">Depois este celular abre direto, sem pedir nada.</p>
+      </div>
+
       {erro && (
-        <p className="rounded-2xl bg-destructive px-4 py-3 text-lg font-bold text-destructive-foreground">{erro}</p>
+        <p role="alert" className="w-full rounded-2xl border-4 border-destructive bg-destructive px-4 py-4 text-xl font-bold text-destructive-foreground">
+          {erro}
+        </p>
       )}
+
       <button
         onClick={() => {
           setErro(null);
           setPedindo(true);
         }}
-        className="min-h-16 w-full rounded-2xl bg-primary px-6 text-lg font-extrabold text-primary-foreground"
+        className={BOTAO}
       >
         DIGITAR A SENHA
       </button>
-      <p className="text-base text-muted-foreground">
-        É a mesma senha do dia a dia. Ela é pedida uma vez, só neste aparelho.
+      <p className="text-lg text-muted-foreground">
+        É a mesma senha de 6 números que você já usa para bater o ponto.
       </p>
 
       <PinPad
@@ -112,7 +123,7 @@ export function DeviceGate({ children }: { children: ReactNode }) {
             if (!r.ok && r.motivo !== "senha_incorreta") setErro("Não foi possível liberar. Tente de novo.");
             return r;
           } catch {
-            setErro("Sem conexão. Confira a internet e tente de novo.");
+            setErro("Sem internet. Confira a conexão e tente de novo.");
             return { ok: false, motivo: "sem_conexao", restantes: 0 };
           }
         }}
