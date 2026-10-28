@@ -1,1 +1,6 @@
-project_id = "pxhegoprmyvcqvmqhqvi"
+# Referencia do projeto Supabase usado por esta instalacao.
+# Preencha com o project ref do SEU projeto (o trecho que aparece na URL
+# do painel: https://supabase.com/dashboard/project/<project-ref>).
+# O app em si nao le este arquivo; a conexao usa as variaveis de ambiente
+# SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.
+project_id = ""
