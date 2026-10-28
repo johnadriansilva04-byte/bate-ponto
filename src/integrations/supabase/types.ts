@@ -14,36 +14,141 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_config: {
+        Row: {
+          bloqueado_ate: string | null
+          installation_id: string
+          pin_hash: string
+          tentativas_erradas: number
+          updated_at: string
+        }
+        Insert: {
+          bloqueado_ate?: string | null
+          installation_id?: string
+          pin_hash: string
+          tentativas_erradas?: number
+          updated_at?: string
+        }
+        Update: {
+          bloqueado_ate?: string | null
+          installation_id?: string
+          pin_hash?: string
+          tentativas_erradas?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       monthly_rates: {
         Row: {
+          closed_at: string | null
           days_worked: number
           hourly_rate: number | null
           installation_id: string
           month: number
+          reopened_at: string | null
           session_count: number
+          status: string
           total_seconds: number
           updated_at: string
+          valor_total_fechamento: number | null
           year: number
         }
         Insert: {
+          closed_at?: string | null
           days_worked?: number
           hourly_rate?: number | null
           installation_id?: string
           month: number
+          reopened_at?: string | null
           session_count?: number
+          status?: string
           total_seconds?: number
           updated_at?: string
+          valor_total_fechamento?: number | null
           year: number
         }
         Update: {
+          closed_at?: string | null
           days_worked?: number
           hourly_rate?: number | null
           installation_id?: string
           month?: number
+          reopened_at?: string | null
           session_count?: number
+          status?: string
           total_seconds?: number
           updated_at?: string
+          valor_total_fechamento?: number | null
           year?: number
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          cpf: string | null
+          created_at: string
+          fuso_horario: string
+          installation_id: string
+          nome: string | null
+          updated_at: string
+          valor_hora_padrao: number | null
+        }
+        Insert: {
+          cpf?: string | null
+          created_at?: string
+          fuso_horario?: string
+          installation_id?: string
+          nome?: string | null
+          updated_at?: string
+          valor_hora_padrao?: number | null
+        }
+        Update: {
+          cpf?: string | null
+          created_at?: string
+          fuso_horario?: string
+          installation_id?: string
+          nome?: string | null
+          updated_at?: string
+          valor_hora_padrao?: number | null
+        }
+        Relationships: []
+      }
+      session_audit: {
+        Row: {
+          action: string
+          changed_at: string
+          id: number
+          installation_id: string
+          new_ended_at: string | null
+          new_hash: string | null
+          old_ended_at: string | null
+          old_hash: string | null
+          reason: string | null
+          session_id: string
+        }
+        Insert: {
+          action: string
+          changed_at?: string
+          id?: number
+          installation_id: string
+          new_ended_at?: string | null
+          new_hash?: string | null
+          old_ended_at?: string | null
+          old_hash?: string | null
+          reason?: string | null
+          session_id: string
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          id?: number
+          installation_id?: string
+          new_ended_at?: string | null
+          new_hash?: string | null
+          old_ended_at?: string | null
+          old_hash?: string | null
+          reason?: string | null
+          session_id?: string
         }
         Relationships: []
       }
@@ -51,36 +156,190 @@ export type Database = {
         Row: {
           created_at: string
           duration_seconds: number | null
+          end_geo_status: string | null
+          end_latitude: number | null
+          end_longitude: number | null
           ended_at: string | null
           id: string
           installation_id: string
+          prev_hash: string | null
+          recorded_ended_at: string | null
+          recorded_started_at: string | null
+          sealed_at: string | null
+          session_hash: string | null
+          start_geo_status: string | null
+          start_latitude: number | null
+          start_longitude: number | null
           started_at: string
+          titular_cpf: string | null
+          titular_nome: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
+          duration_seconds?: number | null
+          end_geo_status?: string | null
+          end_latitude?: number | null
+          end_longitude?: number | null
           ended_at?: string | null
           id?: string
           installation_id?: string
+          prev_hash?: string | null
+          recorded_ended_at?: string | null
+          recorded_started_at?: string | null
+          sealed_at?: string | null
+          session_hash?: string | null
+          start_geo_status?: string | null
+          start_latitude?: number | null
+          start_longitude?: number | null
           started_at?: string
+          titular_cpf?: string | null
+          titular_nome?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
+          duration_seconds?: number | null
+          end_geo_status?: string | null
+          end_latitude?: number | null
+          end_longitude?: number | null
           ended_at?: string | null
           id?: string
           installation_id?: string
+          prev_hash?: string | null
+          recorded_ended_at?: string | null
+          recorded_started_at?: string | null
+          sealed_at?: string | null
+          session_hash?: string | null
+          start_geo_status?: string | null
+          start_latitude?: number | null
+          start_longitude?: number | null
           started_at?: string
+          titular_cpf?: string | null
+          titular_nome?: string | null
           updated_at?: string
         }
         Relationships: []
       }
     }
     Views: {
-      [_ in never]: never
+      monthly_closures: {
+        Row: {
+          ano: number | null
+          closed_at: string | null
+          dias_trabalhados: number | null
+          installation_id: string | null
+          mes: number | null
+          reopened_at: string | null
+          status: string | null
+          total_segundos_fechamento: number | null
+          total_sessoes: number | null
+          updated_at: string | null
+          valor_hora_fechamento: number | null
+          valor_total_fechamento: number | null
+        }
+        Insert: {
+          ano?: number | null
+          closed_at?: string | null
+          dias_trabalhados?: number | null
+          installation_id?: string | null
+          mes?: number | null
+          reopened_at?: string | null
+          status?: string | null
+          total_segundos_fechamento?: number | null
+          total_sessoes?: number | null
+          updated_at?: string | null
+          valor_hora_fechamento?: number | null
+          valor_total_fechamento?: never
+        }
+        Update: {
+          ano?: number | null
+          closed_at?: string | null
+          dias_trabalhados?: number | null
+          installation_id?: string | null
+          mes?: number | null
+          reopened_at?: string | null
+          status?: string | null
+          total_segundos_fechamento?: number | null
+          total_sessoes?: number | null
+          updated_at?: string | null
+          valor_hora_fechamento?: number | null
+          valor_total_fechamento?: never
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      correct_session_end: {
+        Args: { p_new_end: string; p_reason: string; p_session_id: string }
+        Returns: undefined
+      }
+      pin_verify: { Args: { p_pin: string }; Returns: Json }
+      session_hash_valid: { Args: { p_id: string }; Returns: boolean }
+      ws_hash:
+        | {
+            Args: {
+              p_cpf: string
+              p_elat: number
+              p_elng: number
+              p_ended: string
+              p_id: string
+              p_installation: string
+              p_nome: string
+              p_prev: string
+              p_slat: number
+              p_slng: number
+              p_started: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_elat: number
+              p_elng: number
+              p_ended: string
+              p_id: string
+              p_installation: string
+              p_prev: string
+              p_slat: number
+              p_slng: number
+              p_started: string
+            }
+            Returns: string
+          }
+      ws_seal_payload:
+        | {
+            Args: {
+              p_cpf: string
+              p_duration: number
+              p_elat: number
+              p_elng: number
+              p_ended: string
+              p_id: string
+              p_installation: string
+              p_nome: string
+              p_prev: string
+              p_slat: number
+              p_slng: number
+              p_started: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_duration: number
+              p_elat: number
+              p_elng: number
+              p_ended: string
+              p_id: string
+              p_installation: string
+              p_prev: string
+              p_slat: number
+              p_slng: number
+              p_started: string
+            }
+            Returns: string
+          }
     }
     Enums: {
       [_ in never]: never

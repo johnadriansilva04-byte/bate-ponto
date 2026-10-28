@@ -1,14 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, AlertTriangle, CalendarX, Info, WifiOff, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, CalendarX, Info, WifiOff, RefreshCw, Printer, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
+import { FichaPonto } from "@/components/FichaPonto";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { endSession, fetchMonth, fetchRate, localInputToIso, saveRate } from "@/lib/sessions-api";
+import { endSession, fetchAllRates, fetchAllSessions, fetchMonth, fetchRate, fetchTitular, fixSession, localInputToIso, saveRate } from "@/lib/sessions-api";
 import {
   buildMonth, dayKey, earningsCents, fmtDate, fmtTime, formatBRL, formatDuration, sessionSeconds, tzParts, type Session,
 } from "@/lib/hours";
+import { formatCoords, geoLabel } from "@/lib/geo";
 
 export const Route = createFileRoute("/historico")({
   head: () => ({
@@ -33,90 +35,289 @@ function History() {
   const t = tzParts(now);
   const [ym, setYm] = useState({ y: t.y, m: t.m });
   const [fixing, setFixing] = useState<Session | null>(null);
+  // "mes" = mes escolhido; "tudo" = linha do tempo completa.
+  const [scope, setScope] = useState<"mes" | "tudo">("mes");
   const q = useQuery({ queryKey: ["month", ym.y, ym.m], queryFn: () => fetchMonth(ym.y, ym.m) });
+  const allQ = useQuery({ queryKey: ["all"], queryFn: fetchAllSessions, enabled: scope === "tudo" });
+  const titularQ = useQuery({ queryKey: ["titular"], queryFn: fetchTitular, staleTime: Infinity });
+  const rateQ = useQuery({ queryKey: ["rate", ym.y, ym.m], queryFn: () => fetchRate(ym.y, ym.m) });
+  const valorHora = scope === "mes" ? (rateQ.data ?? null) : null;
   const report = buildMonth(ym.y, ym.m, q.data ?? [], now);
+  const todayKey = dayKey(now);
 
   const shift = (d: number) => {
     const idx = ym.y * 12 + (ym.m - 1) + d;
     setYm({ y: Math.floor(idx / 12), m: (idx % 12) + 1 });
   };
   const years = Array.from({ length: 8 }, (_, i) => t.y - 6 + i);
-  const sel = "rounded-xl border-2 border-input bg-card px-3 py-3 text-xl font-bold";
+  const sel = "rounded-xl border-2 border-input bg-card px-3 py-4 text-2xl font-bold";
+  // Only the week containing today starts expanded, so the screen stays short.
+  const currentWeek = report.weeks.findIndex((w) => w.days.some((d) => d.key === todayKey));
+
+  // Para a ficha: no mes, as sessoes do mes; em "tudo", a linha completa.
+  const fichaSessions = useMemo(() => {
+    if (scope === "tudo") return allQ.data ?? [];
+    return [...(q.data ?? [])].sort((a, b) => a.started_at.localeCompare(b.started_at));
+  }, [scope, allQ.data, q.data]);
+
+  const fichaTotal = useMemo(
+    () => fichaSessions.reduce((acc, s) => acc + (s.ended_at ? (sessionSeconds(s) ?? 0) : 0), 0),
+    [fichaSessions],
+  );
+  const fichaDias = useMemo(
+    () => new Set(fichaSessions.filter((s) => s.ended_at).map((s) => dayKey(new Date(s.started_at)))).size,
+    [fichaSessions],
+  );
+
+  const periodLabel = useMemo(() => {
+    if (scope !== "tudo") return `${MONTHS[ym.m - 1]} de ${ym.y}`;
+    const first = fichaSessions[0];
+    const last = fichaSessions[fichaSessions.length - 1];
+    if (!first || !last) return "todo o período";
+    return `${fmtDate(first.started_at)} a ${fmtDate(last.started_at)}`;
+  }, [scope, fichaSessions, ym.y, ym.m]);
 
   return (
     <div className="space-y-6">
-      <section className="flex items-center gap-2 rounded-3xl bg-card p-3 shadow-soft">
-        <button aria-label="Mês anterior" onClick={() => shift(-1)} className="rounded-2xl bg-secondary p-3"><ChevronLeft className="h-8 w-8" /></button>
-        <div className="flex flex-1 justify-center gap-2">
-          <select aria-label="Mês" className={sel} value={ym.m} onChange={(e) => setYm({ ...ym, m: Number(e.target.value) })}>
-            {MONTHS.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
-          </select>
-          <select aria-label="Ano" className={sel} value={ym.y} onChange={(e) => setYm({ ...ym, y: Number(e.target.value) })}>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <button aria-label="Próximo mês" onClick={() => shift(1)} className="rounded-2xl bg-secondary p-3"><ChevronRight className="h-8 w-8" /></button>
+      {/* Escolha do periodo: o mes atual por padrao, ou tudo o que ja foi registrado. */}
+      <section className="no-print grid grid-cols-2 gap-2 rounded-3xl bg-card p-2 shadow-soft">
+        <button
+          onClick={() => setScope("mes")}
+          aria-pressed={scope === "mes"}
+          className={`min-h-14 rounded-2xl text-lg font-bold ${scope === "mes" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
+        >
+          MÊS
+        </button>
+        <button
+          onClick={() => setScope("tudo")}
+          aria-pressed={scope === "tudo"}
+          className={`min-h-14 rounded-2xl text-lg font-bold ${scope === "tudo" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
+        >
+          TODO O PERÍODO
+        </button>
       </section>
 
-      {!q.isError && report.incomplete.length > 0 && (
-        <section className="rounded-3xl bg-warning p-5 text-warning-foreground">
-          <p className="flex items-center gap-2 text-lg font-bold"><AlertTriangle className="h-6 w-6" /> Você esqueceu de finalizar?</p>
-          <p className="mt-1 text-base">Existe uma entrada sem horário de saída. Essas horas só entram na soma depois que você informar a saída.</p>
-          {report.incomplete.map((s) => (
-            <div key={s.id} className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-base font-bold">Entrada {fmtDate(s.started_at)} às {fmtTime(s.started_at)}</span>
-              <button onClick={() => setFixing(s)} className="rounded-xl bg-card px-4 py-3 text-base font-bold text-foreground">Informar saída</button>
-            </div>
-          ))}
+      {scope === "mes" && (
+        <section className="no-print flex items-center gap-2 rounded-3xl bg-card p-3 shadow-soft">
+          <button aria-label="Mês anterior" onClick={() => shift(-1)} className="rounded-2xl bg-secondary p-3"><ChevronLeft className="h-9 w-9" /></button>
+          <div className="flex flex-1 justify-center gap-2">
+            <select aria-label="Mês" className={sel} value={ym.m} onChange={(e) => setYm({ ...ym, m: Number(e.target.value) })}>
+              {MONTHS.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
+            </select>
+            <select aria-label="Ano" className={sel} value={ym.y} onChange={(e) => setYm({ ...ym, y: Number(e.target.value) })}>
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <button aria-label="Próximo mês" onClick={() => shift(1)} className="rounded-2xl bg-secondary p-3"><ChevronRight className="h-9 w-9" /></button>
         </section>
       )}
 
-      {q.isLoading ? (
-        <div className="h-64 animate-pulse rounded-3xl bg-muted" />
+      {scope === "tudo" ? (
+        <FullPeriod sessions={allQ.data ?? []} loading={allQ.isLoading} error={allQ.isError} onRetry={() => allQ.refetch()} />
+      ) : q.isLoading ? (
+        <div className="h-40 animate-pulse rounded-3xl bg-muted" />
       ) : q.isError ? (
         <section className="space-y-4 rounded-3xl bg-warning p-6 text-warning-foreground">
           <p className="flex items-center gap-2 text-lg font-bold">
             <WifiOff className="h-6 w-6" /> Sem conexão com seus horários
           </p>
           <p className="text-base">
-            Não conseguimos carregar este mês agora. Confira se o celular está com internet e tente de novo.
-            Seus horários já salvos não foram perdidos.
+            Não conseguimos carregar este mês agora. Confira a internet e tente de novo. Nada foi perdido.
           </p>
           <button
             onClick={() => q.refetch()}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-card px-4 py-4 text-lg font-bold text-foreground shadow-sm"
+            className="flex min-h-16 w-full items-center justify-center gap-2 rounded-2xl bg-card px-4 text-lg font-bold text-foreground"
           >
-            <RefreshCw className="h-5 w-5" /> Tentar de novo
+            <RefreshCw className="h-6 w-6" /> TENTAR DE NOVO
           </button>
-        </section>
-      ) : report.sessionCount === 0 ? (
-        <section className="rounded-3xl bg-card p-8 text-center shadow-soft">
-          <CalendarX className="mx-auto h-12 w-12 text-muted-foreground" />
-          <p className="mt-4 text-xl font-bold">Nenhum horário neste mês</p>
-          <p className="mt-2 text-base text-muted-foreground">
-            Você ainda não registrou horas em {MONTHS[ym.m - 1]} de {ym.y}. Use os botões acima para ver outro mês.
-          </p>
         </section>
       ) : (
         <>
-          <p className="flex items-start gap-2 rounded-2xl bg-secondary p-4 text-base text-secondary-foreground">
-            <Info className="mt-0.5 h-5 w-5 shrink-0" />
-            Seus horários do mês, organizados por semana. A coluna Horas mostra o total de cada dia e o total de cada semana.
-          </p>
-          {report.weeks.map((w, i) => <WeekTable key={i} index={i} week={w} />)}
+          {/* Month summary first: the number the user came here for. */}
+          <Summary report={report} ym={ym} />
+
+          {report.incomplete.length > 0 && (
+            <section className="rounded-3xl bg-warning p-5 text-warning-foreground">
+              <p className="flex items-center gap-2 text-lg font-bold"><AlertTriangle className="h-6 w-6" /> Você esqueceu de finalizar?</p>
+              <p className="mt-1 text-base">Essas horas só entram na soma depois que você informar a saída.</p>
+              {report.incomplete.map((s) => (
+                <div key={s.id} className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-base font-bold">Entrada {fmtDate(s.started_at)} às {fmtTime(s.started_at)}</span>
+                  <button onClick={() => setFixing(s)} className="min-h-14 rounded-xl bg-card px-4 text-base font-bold text-foreground">Informar saída</button>
+                </div>
+              ))}
+            </section>
+          )}
+
+          {report.sessionCount === 0 ? (
+            <section className="rounded-3xl bg-card p-8 text-center shadow-soft">
+              <CalendarX className="mx-auto h-12 w-12 text-muted-foreground" />
+              <p className="mt-4 text-xl font-bold">Nenhum horário neste mês</p>
+              <p className="mt-2 text-base text-muted-foreground">
+                Você ainda não registrou horas em {MONTHS[ym.m - 1]} de {ym.y}. Use as setas acima para ver outro mês.
+              </p>
+            </section>
+          ) : (
+            <section className="space-y-4">
+              <h2 className="text-2xl font-extrabold">Semana por semana</h2>
+              <p className="flex items-start gap-2 text-base text-muted-foreground">
+                <Info className="mt-1 h-5 w-5 shrink-0" /> Toque em uma semana para abrir. O total do dia fica na última
+                coluna.
+              </p>
+              {report.weeks.map((w, i) => (
+                <WeekTable key={i} index={i} week={w} defaultOpen={i === currentWeek || currentWeek === -1} />
+              ))}
+            </section>
+          )}
         </>
       )}
 
-      <Summary report={report} ym={ym} hidden={q.isError} />
+      {/* Impressao: vale para o mes escolhido ou para o periodo completo. */}
+      <PrintBar
+        periodLabel={periodLabel}
+        totalSeconds={fichaTotal}
+        dias={fichaDias}
+        disabled={fichaSessions.length === 0}
+        valorHora={valorHora}
+      />
+
+      <FichaPonto
+        sessions={fichaSessions}
+        periodo={{ rotulo: periodLabel, de: null, ate: null }}
+        valorHora={valorHora}
+        totalSeconds={fichaTotal}
+        diasTrabalhados={fichaDias}
+        nome={titularQ.data?.nome ?? ""}
+        cpf={titularQ.data?.cpf ?? ""}
+      />
+
       <FixDialog session={fixing} onClose={() => setFixing(null)} />
     </div>
   );
 }
 
-function WeekTable({ week, index }: { week: ReturnType<typeof buildMonth>["weeks"][number]; index: number }) {
+function PrintBar({
+  periodLabel,
+  totalSeconds,
+  dias,
+  disabled,
+  valorHora,
+}: {
+  periodLabel: string;
+  totalSeconds: number;
+  dias: number;
+  disabled: boolean;
+  valorHora: number | null;
+}) {
   return (
-    <section className="overflow-hidden rounded-3xl bg-card shadow-soft">
-      <h2 className="bg-primary px-5 py-3 font-display text-xl font-bold text-primary-foreground">Semana {index + 1}</h2>
+    <section className="no-print space-y-4 rounded-3xl border-2 border-primary bg-card p-5 shadow-soft">
+      <h2 className="flex items-center gap-2 font-display text-xl font-extrabold text-primary">
+        <ShieldCheck className="h-6 w-6" /> FICHA DE PONTO
+      </h2>
+      <p className="text-base text-muted-foreground">
+        {periodLabel} · {dias} dia(s) · {formatDuration(totalSeconds)}
+        {valorHora !== null ? ` · ${formatBRL(earningsCents(totalSeconds, valorHora))}` : ""}
+      </p>
+      <p className="text-base text-muted-foreground">
+        Sai uma folha A4 com seu nome, o dia a dia, o local e o lacre de cada registro, mais o espaço para as duas
+        assinaturas.
+      </p>
+      <button
+        onClick={() => window.print()}
+        disabled={disabled}
+        className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-primary px-4 text-xl font-extrabold text-primary-foreground disabled:opacity-50"
+      >
+        <Printer className="h-7 w-7" /> IMPRIMIR FICHA DE PONTO / GERAR PDF
+      </button>
+    </section>
+  );
+}
+
+function FullPeriod({
+  sessions,
+  loading,
+  error,
+  onRetry,
+}: {
+  sessions: Session[];
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+}) {
+  const total = sessions.reduce((acc, s) => acc + (s.ended_at ? (sessionSeconds(s) ?? 0) : 0), 0);
+  const dias = new Set(sessions.filter((s) => s.ended_at).map((s) => dayKey(new Date(s.started_at)))).size;
+
+  if (loading) return <div className="h-40 animate-pulse rounded-3xl bg-muted" />;
+  if (error)
+    return (
+      <section className="space-y-4 rounded-3xl bg-warning p-6 text-warning-foreground">
+        <p className="text-lg font-bold">Não deu para carregar o histórico completo.</p>
+        <button onClick={onRetry} className="flex min-h-16 w-full items-center justify-center gap-2 rounded-2xl bg-card px-4 text-lg font-bold text-foreground">
+          <RefreshCw className="h-6 w-6" /> TENTAR DE NOVO
+        </button>
+      </section>
+    );
+
+  return (
+    <>
+      <section className="rounded-3xl border-2 border-primary bg-card p-6 shadow-soft">
+        <h2 className="font-display text-2xl font-extrabold text-primary">TODO O PERÍODO</h2>
+        <p className="mt-4 text-xl font-bold text-muted-foreground">Total trabalhado</p>
+        <p className="font-display text-5xl font-extrabold text-primary">{formatDuration(total)}</p>
+        <dl className="mt-4 space-y-3 border-t pt-4 text-lg">
+          <div className="flex justify-between"><dt>Dias com trabalho</dt><dd className="font-bold">{dias}</dd></div>
+          <div className="flex justify-between"><dt>Entradas registradas</dt><dd className="font-bold">{sessions.length}</dd></div>
+        </dl>
+      </section>
+
+      <section className="overflow-hidden rounded-3xl bg-card shadow-soft">
+        <table className="w-full text-left text-base tabular-nums">
+          <thead className="bg-secondary text-sm uppercase text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2">Dia</th>
+              <th className="px-2 py-2">Entrada</th>
+              <th className="px-2 py-2">Saída</th>
+              <th className="px-3 py-2 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.length === 0 && (
+              <tr><td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">Nada registrado ainda.</td></tr>
+            )}
+            {sessions.map((s) => (
+              <tr key={s.id} className="border-b last:border-0">
+                <td className="px-3 py-3 font-bold">{fmtDate(s.started_at)}</td>
+                <td className="px-2 py-3">{fmtTime(s.started_at)}</td>
+                <td className="px-2 py-3">
+                  {s.ended_at ? fmtTime(s.ended_at) : <span className="font-bold text-destructive">em aberto</span>}
+                </td>
+                <td className="px-3 py-3 text-right font-bold">{s.ended_at ? formatDuration(sessionSeconds(s) ?? 0) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </>
+  );
+}
+
+function WeekTable({
+  week,
+  index,
+  defaultOpen,
+}: {
+  week: ReturnType<typeof buildMonth>["weeks"][number];
+  index: number;
+  defaultOpen: boolean;
+}) {
+  return (
+    // Native <details>: opens by tap, works without JavaScript, and screen
+    // readers announce the collapsed/expanded state on their own.
+    <details open={defaultOpen} className="overflow-hidden rounded-3xl bg-card shadow-soft">
+      <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-3 bg-secondary px-5 py-4">
+        <span className="font-display text-xl font-bold">Semana {index + 1}</span>
+        <span className="font-display text-xl font-extrabold text-primary">{formatDuration(week.seconds)}</span>
+      </summary>
       <table className="w-full text-left text-base tabular-nums">
         <thead className="bg-secondary text-sm uppercase text-muted-foreground">
           <tr>
@@ -154,6 +355,15 @@ function WeekTable({ week, index }: { week: ReturnType<typeof buildMonth>["weeks
                           </>
                         ) : <span className="font-bold text-destructive">em aberto</span>}
                         {s && dur !== null && rows > 1 && <div className="text-xs text-muted-foreground">({formatDuration(dur)})</div>}
+                        {s && s.ended_at && (
+                          <div className="mt-1 text-[11px] leading-tight text-muted-foreground">
+                            <span className="inline-flex items-center gap-1 font-bold text-primary">
+                              <ShieldCheck className="h-3 w-3" /> Lacre
+                            </span>
+                            <div className="font-mono break-all">{s.session_hash ? `${s.session_hash.slice(0, 16)}…` : "—"}</div>
+                            <div>{geoLabel(s.end_geo_status ?? s.start_geo_status)}</div>
+                          </div>
+                        )}
                       </td>
                       {r === 0 && (
                         <td rowSpan={rows} className="px-3 py-3 text-right align-top">
@@ -176,11 +386,11 @@ function WeekTable({ week, index }: { week: ReturnType<typeof buildMonth>["weeks
           </tr>
         </tfoot>
       </table>
-    </section>
+    </details>
   );
 }
 
-function Summary({ report, ym, hidden }: { report: ReturnType<typeof buildMonth>; ym: { y: number; m: number }; hidden?: boolean }) {
+function Summary({ report, ym }: { report: ReturnType<typeof buildMonth>; ym: { y: number; m: number } }) {
   const qc = useQueryClient();
   const rateQ = useQuery({ queryKey: ["rate", ym.y, ym.m], queryFn: () => fetchRate(ym.y, ym.m) });
   const [text, setText] = useState("");
@@ -200,15 +410,14 @@ function Summary({ report, ym, hidden }: { report: ReturnType<typeof buildMonth>
     onError: () => toast.error("Não foi possível salvar o valor. Tente de novo."),
   });
 
-  if (hidden) return null;
-
   return (
     <section className="rounded-3xl border-2 border-primary bg-card p-6 shadow-soft">
       <h2 className="font-display text-2xl font-extrabold text-primary">RESUMO DO MÊS</h2>
-      <dl className="mt-4 space-y-3 text-lg">
+      <p className="mt-4 text-xl font-bold text-muted-foreground">Total trabalhado</p>
+      <p className="font-display text-5xl font-extrabold text-primary">{formatDuration(report.totalSeconds)}</p>
+      <dl className="mt-4 space-y-3 border-t pt-4 text-lg">
         <div className="flex justify-between"><dt>Dias com trabalho</dt><dd className="font-bold">{report.daysWorked}</dd></div>
-        <div className="flex justify-between"><dt>Sessões (entradas e saídas)</dt><dd className="font-bold">{report.sessionCount}</dd></div>
-        <div className="flex items-center justify-between border-t pt-3"><dt className="font-bold">Total trabalhado</dt><dd className="font-display text-4xl font-extrabold text-primary">{formatDuration(report.totalSeconds)}</dd></div>
+        <div className="flex justify-between"><dt>Entradas registradas</dt><dd className="font-bold">{report.sessionCount}</dd></div>
       </dl>
       <label className="mt-6 block">
         <span className="mb-1 block text-lg font-bold">Quanto você ganha por hora? (opcional)</span>
@@ -238,14 +447,23 @@ function Summary({ report, ym, hidden }: { report: ReturnType<typeof buildMonth>
 function FixDialog({ session, onClose }: { session: Session | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [value, setValue] = useState("");
+  const [reason, setReason] = useState("");
   const fix = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const iso = localInputToIso(value);
-      if (!session || iso <= session.started_at) throw new Error("A saída precisa ser depois da entrada.");
+      if (!session) throw new Error("Sessão inválida.");
+      if (iso <= session.started_at) throw new Error("A saída precisa ser depois da entrada.");
       if (new Date(iso) > new Date()) throw new Error("A saída não pode ser no futuro.");
-      return endSession(session.id, iso);
+      // Passa pela funcao do banco: exige motivo, audita e recalcula o lacre.
+      const err = await fixSession(session.id, iso, reason);
+      if (err) throw new Error(err);
     },
-    onSuccess: () => { toast.success("Saída registrada! As horas entraram na soma."); qc.invalidateQueries(); onClose(); },
+    onSuccess: () => {
+      toast.success("Saída registrada! As horas entraram na soma.");
+      qc.invalidateQueries();
+      setReason("");
+      onClose();
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível salvar. Tente de novo."),
   });
   return (
@@ -255,7 +473,25 @@ function FixDialog({ session, onClose }: { session: Session | null; onClose: () 
         {session && <p className="text-lg">Entrada: {fmtDate(session.started_at)} às {fmtTime(session.started_at)}</p>}
         <p className="text-base text-muted-foreground">Escolha abaixo o horário em que você parou de trabalhar.</p>
         <input type="datetime-local" className="w-full rounded-2xl border-2 border-input px-4 py-4 text-xl" value={value} onChange={(e) => setValue(e.target.value)} />
-        <button disabled={!value || fix.isPending} onClick={() => fix.mutate()} className="btn-giant btn-start !min-h-16 !text-xl">SALVAR SAÍDA</button>
+        <label className="block">
+          <span className="mb-1 block text-base font-bold">Por que está corrigindo?</span>
+          <span className="mb-2 block text-sm text-muted-foreground">
+            Fica registrado no histórico de auditoria junto com o lacre anterior.
+          </span>
+          <input
+            placeholder="Ex.: esqueci de finalizar e parei às 17h"
+            className="w-full rounded-2xl border-2 border-input bg-background px-4 py-4 text-lg"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </label>
+        <button
+          disabled={!value || reason.trim().length < 3 || fix.isPending}
+          onClick={() => fix.mutate()}
+          className="btn-giant btn-start !min-h-16 !text-xl"
+        >
+          SALVAR SAÍDA
+        </button>
       </DialogContent>
     </Dialog>
   );

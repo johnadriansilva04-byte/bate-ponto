@@ -1,8 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { CheckCircle2, Info, WifiOff, RefreshCw } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Loader2, WifiOff } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import {
   AlertDialog,
@@ -15,15 +14,21 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { endSession, fetchOpenSession, fetchSessionsBetween, startSession } from "@/lib/sessions-api";
-import { TZ, dayKey, fmtDate, fmtTime, formatClock, formatDuration, localMidnight, tzParts, todaySeconds } from "@/lib/hours";
+import { hasPending, pendingEvents, queue, flush } from "@/lib/outbox";
+import { getPosition, type GeoFix } from "@/lib/geo";
+import { PinPad } from "@/components/PinPad";
+import {
+  TZ, dayKey, fmtDate, fmtTime, formatClock, formatDuration, localMidnight, runningSeconds, todaySeconds, tzParts,
+  type Session,
+} from "@/lib/hours";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Bater ponto — Meu Ponto" },
-      { name: "description", content: "Toque para iniciar e finalizar o trabalho. As horas são somadas sozinhas." },
+      { name: "description", content: "Toque para começar e para terminar. O tempo é somado sozinho." },
       { property: "og:title", content: "Bater ponto — Meu Ponto" },
-      { property: "og:description", content: "Toque para iniciar e finalizar o trabalho. As horas são somadas sozinhas." },
+      { property: "og:description", content: "Toque para começar e para terminar. O tempo é somado sozinho." },
     ],
   }),
   component: () => (
@@ -33,128 +38,244 @@ export const Route = createFileRoute("/")({
   ),
 });
 
-const longDate = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric" });
-const clockFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const LONG_SESSION = 16 * 3600;
+const dateFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
+const PENDING_ID = "pendente";
 
-function useNow() {
+function useTicker(active: boolean) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
+    if (!active) return;
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [active]);
   return now;
 }
 
 function Punch() {
-  const now = useNow();
   const qc = useQueryClient();
+  const [pendingStart, setPendingStart] = useState<string | null>(null);
+  const [queued, setQueued] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [askStop, setAskStop] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Senha exigida antes de cada toque: "iniciar" ou "finalizar".
+  const [pinFor, setPinFor] = useState<null | "iniciar" | "finalizar">(null);
+
+  const open = useQuery({ queryKey: ["open"], queryFn: fetchOpenSession, retry: 1 });
+  const running = open.data ?? (pendingStart ? { id: PENDING_ID, started_at: pendingStart, ended_at: null } : null);
+  const now = useTicker(!!running);
+
   const p = tzParts(now);
+  const today = dayKey(now);
   const from = new Date(localMidnight(p.y, p.m, p.d)).toISOString();
   const to = new Date(localMidnight(p.y, p.m, p.d) + 86400000).toISOString();
-  const today = dayKey(now);
-
-  const open = useQuery({ queryKey: ["open"], queryFn: fetchOpenSession });
   const day = useQuery({ queryKey: ["day", today], queryFn: () => fetchSessionsBetween(from, to) });
 
-  const [askStop, setAskStop] = useState(false);
-  const refresh = () => qc.invalidateQueries();
-  const start = useMutation({ mutationFn: startSession, onSuccess: () => { toast.success("Entrada registrada! Bom trabalho."); refresh(); }, onError: () => toast.error("Não deu para registrar agora. Confira a internet e tente de novo.") });
-  const stop = useMutation({ mutationFn: (id: string) => endSession(id), onSuccess: () => { toast.success("Saída registrada! Suas horas entraram na soma."); refresh(); }, onError: () => toast.error("Não deu para registrar agora. Confira a internet e tente de novo.") });
-
-  const running = open.data;
-  const elapsed = running ? (now.getTime() - new Date(running.started_at).getTime()) / 1000 : 0;
-  const sessions = [...(day.data ?? [])];
+  // The elapsed time comes from the stored start timestamp, so it stays correct
+  // whether the app was open the whole time or closed for hours.
+  const elapsed = running ? runningSeconds(running, now) : 0;
+  const sessions: Session[] = [...(day.data ?? [])];
   if (running && !sessions.some((s) => s.id === running.id)) sessions.push(running);
   const totalToday = todaySeconds(sessions, now);
-  const closedToday = sessions.filter((s) => s.ended_at).length;
-  const loading = open.isLoading;
-  const failed = open.isError || day.isError;
+
+  const sync = useCallback(async () => {
+    setQueued(hasPending());
+    if (!navigator.onLine) {
+      setOffline(true);
+      return;
+    }
+    setOffline(false);
+    try {
+      const clean = await flush();
+      setQueued(!clean);
+      if (clean) {
+        setPendingStart(null);
+        await qc.invalidateQueries();
+      }
+    } catch {
+      setQueued(hasPending());
+    }
+  }, [qc]);
+
+  useEffect(() => {
+    void sync();
+    const onOnline = () => void sync();
+    const onVisible = () => document.visibilityState === "visible" && void sync();
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", () => setOffline(true));
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [sync]);
+
+  const punch = useMutation({
+    mutationFn: async (geo: GeoFix) => {
+      // O horario do toque e capturado antes de qualquer espera: se o GPS
+      // demorar, o ponto continua valendo o instante em que ele apertou.
+      const at = new Date().toISOString();
+      if (running) {
+        if (running.id !== PENDING_ID) {
+          const ok = await endSession(running.id, at, geo);
+          if (!ok) queue({ kind: "end", id: running.id, at, lat: geo.latitude, lng: geo.longitude, geoStatus: geo.status });
+          else return { online: true };
+        } else {
+          queue({ kind: "end", id: null, at, lat: geo.latitude, lng: geo.longitude, geoStatus: geo.status });
+        }
+        setPendingStart(null);
+      } else {
+        const result = await startSession(at, geo);
+        if (result.ok && result.session) {
+          setPendingStart(null);
+          return { online: true };
+        }
+        queue({ kind: "start", at, lat: geo.latitude, lng: geo.longitude, geoStatus: geo.status });
+        setPendingStart(at);
+      }
+      setQueued(true);
+      return { online: false };
+    },
+    onSuccess: async (r) => {
+      if (r.online) {
+        setNotice(null);
+        await qc.invalidateQueries();
+        await sync();
+      } else {
+        setNotice("Salvando no celular. Vai enviar sozinho quando a internet voltar.");
+      }
+    },
+    onSettled: () => setBusy(false),
+  });
+
+  // Chamado pelo teclado depois da senha certa.
+  const runPunch = async () => {
+    setBusy(true);
+    setNotice(null);
+    setPinFor(null);
+    // O GPS espera no maximo alguns segundos; sem sinal, o ponto segue igual.
+    const geo = await getPosition();
+    punch.mutate(geo);
+  };
+
+  const press = () => {
+    if (busy) return;
+    setNotice(null);
+    // Sempre pede a senha primeiro, para iniciar e para finalizar.
+    setPinFor(running ? "finalizar" : "iniciar");
+  };
+
+  const loading = open.isLoading && !pendingStart;
+  const broken = open.isError && !pendingStart;
+  const longOpen = running && elapsed > LONG_SESSION;
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-3xl bg-card p-6 text-center shadow-soft">
-        <p className="text-xl capitalize text-muted-foreground" suppressHydrationWarning>{longDate.format(now)}</p>
-        <p className="font-display text-6xl font-extrabold tabular-nums" suppressHydrationWarning>{clockFmt.format(now)}</p>
-      </section>
+    <div className="flex min-h-[70vh] flex-col items-center justify-center gap-6 text-center">
+      <p className="text-xl capitalize text-muted-foreground">{dateFmt.format(now)}</p>
 
-      {loading ? (
-        <div className="h-36 animate-pulse rounded-3xl bg-muted" />
-      ) : failed ? (
-        <section className="space-y-4 rounded-3xl bg-warning p-6 text-warning-foreground">
-          <p className="flex items-center gap-2 text-lg font-bold">
-            <WifiOff className="h-6 w-6" /> Sem conexão com seus horários
-          </p>
-          <p className="text-base">
-            Não conseguimos carregar seus registros agora. Confira se o celular está com internet e tente de novo.
-            Seus horários já salvos não foram perdidos.
-          </p>
-          <button
-            onClick={() => refresh()}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-card px-4 py-4 text-lg font-bold text-foreground shadow-sm"
-          >
-            <RefreshCw className="h-5 w-5" /> Tentar de novo
-          </button>
-        </section>
-      ) : running ? (
-        <section className="space-y-5">
-          <div className="rounded-3xl border-2 border-primary bg-accent p-6 text-center">
-            <p className="flex items-center justify-center gap-2 text-lg font-bold text-accent-foreground">
-              <span className="pulse-dot inline-block h-3 w-3 rounded-full bg-primary" /> Você começou às {fmtTime(running.started_at)}
-              {dayKey(new Date(running.started_at)) !== today && ` de ${fmtDate(running.started_at)}`}
-            </p>
-            <p className="mt-2 font-display text-6xl font-extrabold tabular-nums text-accent-foreground">{formatClock(elapsed)}</p>
-            <p className="mt-2 text-base font-bold text-accent-foreground">tempo trabalhado nesta sessão</p>
-            {elapsed > 16 * 3600 && (
-              <p className="mt-3 rounded-xl bg-warning p-3 text-base font-bold text-warning-foreground">
-                Esta sessão está aberta há muito tempo. Se você esqueceu de finalizar, pode corrigir na aba Histórico.
-              </p>
-            )}
-          </div>
-          <p className="flex items-start gap-2 rounded-2xl bg-secondary p-4 text-base text-secondary-foreground">
-            <Info className="mt-0.5 h-5 w-5 shrink-0" />
-            Quando terminar de trabalhar, toque no botão vermelho abaixo. O horário de saída será registrado sozinho.
-          </p>
-          <button className="btn-giant btn-stop" disabled={stop.isPending} onClick={() => setAskStop(true)}>
-            {stop.isPending ? "REGISTRANDO..." : "FINALIZAR TRABALHO"}
-          </button>
-        </section>
-      ) : (
-        <section className="space-y-5">
-          <p className="flex items-start gap-2 rounded-2xl bg-secondary p-4 text-base text-secondary-foreground">
-            <Info className="mt-0.5 h-5 w-5 shrink-0" />
-            Toque no botão abaixo quando começar a trabalhar. O horário de entrada será registrado sozinho.
-          </p>
-          <button className="btn-giant btn-start" disabled={start.isPending} onClick={() => start.mutate()}>
-            {start.isPending ? "REGISTRANDO..." : "INICIAR TRABALHO"}
-          </button>
-        </section>
+      {offline && (
+        <p className="flex items-center gap-2 rounded-2xl bg-warning px-4 py-3 text-lg font-bold text-warning-foreground">
+          <WifiOff className="h-6 w-6" /> Sem internet
+        </p>
       )}
 
-      {!failed && (
-        <section className="rounded-3xl bg-secondary p-6">
-          <div className="flex items-center justify-between">
-            <span className="text-xl font-bold text-secondary-foreground">Horas de hoje</span>
-            <span className="font-display text-4xl font-extrabold text-primary">{formatDuration(totalToday)}</span>
-          </div>
-          <p className="mt-2 text-base text-muted-foreground">
-            {closedToday === 0 && !running
-              ? "Nenhum horário registrado hoje ainda."
-              : running
-                ? "O tempo da sessão que está aberta já entra nesta soma."
-                : `Soma de ${closedToday} ${closedToday === 1 ? "sessão" : "sessões"} registradas hoje.`}
+      {broken && (
+        <p className="flex items-center gap-2 rounded-2xl bg-warning px-4 py-3 text-lg font-bold text-warning-foreground">
+          <WifiOff className="h-6 w-6" /> Sem conexão. Você ainda pode bater o ponto.
+        </p>
+      )}
+
+      {loading ? (
+        <div className="flex flex-col items-center gap-4 py-10">
+          <Loader2 className="h-14 w-14 animate-spin text-primary" />
+          <p className="text-2xl font-bold">Carregando…</p>
+        </div>
+      ) : longOpen ? (
+        // Past 16h the giant ticking clock stops being useful, so the warning
+        // replaces it: the user decides, the app never invents an exit.
+        <div className="w-full space-y-4 rounded-3xl bg-warning p-5 text-left text-warning-foreground">
+          <p className="flex items-center gap-2 text-xl font-bold">
+            <AlertTriangle className="h-7 w-7" /> Você esqueceu de finalizar?
           </p>
-        </section>
+          <p className="text-lg">
+            A sessão está aberta desde {fmtDate(running!.started_at)} às {fmtTime(running!.started_at)}. Encerre agora ou
+            ajuste o horário no Histórico. Nada é encerrado sozinho.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button onClick={() => setAskStop(true)} className="min-h-16 flex-1 rounded-2xl bg-card px-4 text-lg font-bold text-foreground">
+              Encerrar agora
+            </button>
+            <Link to="/historico" className="flex min-h-16 flex-1 items-center justify-center rounded-2xl bg-card px-4 text-lg font-bold text-foreground">
+              <CalendarDays className="mr-2 h-5 w-5" /> Ajustar horário
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* One number only: what the user cares about right now. */}
+          <div className="w-full">
+            <p className="text-2xl font-bold uppercase tracking-wide text-muted-foreground">
+              {running ? "Trabalhando agora" : "Horas de hoje"}
+            </p>
+            <p
+              className="font-display text-[22vw] font-extrabold leading-none tabular-nums text-primary sm:text-8xl"
+              suppressHydrationWarning
+            >
+              {running ? formatClock(elapsed) : broken ? "—" : formatDuration(totalToday)}
+            </p>
+            <p className="mt-2 text-xl text-muted-foreground">
+              {running
+                ? `Começou às ${fmtTime(running.started_at)}${
+                    dayKey(new Date(running.started_at)) !== today ? ` de ${fmtDate(running.started_at)}` : ""
+                  }`
+                : broken
+                  ? "Não deu para carregar agora. Bata o ponto normalmente."
+                  : totalToday > 0
+                    ? "Some tudo que você já trabalhou hoje."
+                    : "Nada registrado hoje ainda."}
+            </p>
+          </div>
+
+          <button
+            className={`btn-giant ${running ? "btn-stop" : "btn-start"}`}
+            disabled={busy}
+            aria-busy={busy}
+            onClick={() => (running ? setAskStop(true) : press())}
+          >
+            {busy ? (
+              <span className="flex items-center justify-center gap-3">
+                <Loader2 className="h-9 w-9 animate-spin" /> REGISTRANDO…
+              </span>
+            ) : running ? (
+              "FINALIZAR TRABALHO"
+            ) : (
+              "INICIAR TRABALHO"
+            )}
+          </button>
+        </>
+      )}
+
+      {notice && (
+        <p className="rounded-2xl bg-secondary px-4 py-3 text-lg font-bold text-secondary-foreground">{notice}</p>
+      )}
+
+      {queued && !notice && (
+        <p className="text-base font-bold text-muted-foreground">
+          {pendingEvents().length} registro(s) aguardando internet…
+        </p>
       )}
 
       <AlertDialog open={askStop} onOpenChange={setAskStop}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-2xl">Finalizar o trabalho agora?</AlertDialogTitle>
+            <AlertDialogTitle className="text-2xl">Finalizar agora?</AlertDialogTitle>
             <AlertDialogDescription className="text-lg">
               {running && (
                 <>
-                  Você começou às <strong>{fmtTime(running.started_at)}</strong> e agora são{" "}
-                  <strong>{fmtTime(now.toISOString())}</strong>. O horário de saída será registrado como agora.
+                  Você começou às <strong>{fmtTime(running.started_at)}</strong>. A saída será registrada com a hora de
+                  agora.
                 </>
               )}
             </AlertDialogDescription>
@@ -163,13 +284,23 @@ function Punch() {
             <AlertDialogCancel className="min-h-14 rounded-2xl text-lg font-bold">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               className="min-h-14 rounded-2xl text-lg font-bold"
-              onClick={() => running && stop.mutate(running.id)}
+              onClick={() => {
+                setAskStop(false);
+                setPinFor("finalizar");
+              }}
             >
               <CheckCircle2 className="mr-2 h-5 w-5" /> Sim, finalizar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <PinPad
+        open={pinFor !== null}
+        action={pinFor ?? "iniciar"}
+        onCancel={() => setPinFor(null)}
+        onOk={() => void runPunch()}
+      />
     </div>
   );
 }

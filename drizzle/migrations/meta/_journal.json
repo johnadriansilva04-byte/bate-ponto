@@ -15,6 +15,27 @@
       "when": 1793141403671,
       "tag": "0001_single_installation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793160519556,
+      "tag": "0002_forensic_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793160635334,
+      "tag": "0003_identity_seal",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793161915046,
+      "tag": "0004_pin_gate",
+      "breakpoints": true
     }
   ]
 }

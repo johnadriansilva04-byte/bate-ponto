@@ -1,7 +1,24 @@
 // Pure time/hours logic. All instants are UTC; display uses America/Sao_Paulo.
 export const TZ = "America/Sao_Paulo";
 
-export type Session = { id: string; started_at: string; ended_at: string | null };
+export type Session = {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  start_latitude?: number | null;
+  start_longitude?: number | null;
+  end_latitude?: number | null;
+  end_longitude?: number | null;
+  start_geo_status?: string | null;
+  end_geo_status?: string | null;
+  recorded_started_at?: string | null;
+  recorded_ended_at?: string | null;
+  session_hash?: string | null;
+  prev_hash?: string | null;
+  sealed_at?: string | null;
+  titular_nome?: string | null;
+  titular_cpf?: string | null;
+};
 
 const partsFmt = new Intl.DateTimeFormat("en-US", {
   timeZone: TZ,
@@ -41,39 +58,22 @@ export function localMidnight(y: number, m: number, d: number): number {
   return guess;
 }
 
-function nextDay(y: number, m: number, d: number) {
-  const t = new Date(Date.UTC(y, m - 1, d + 1));
-  return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
-}
-
-/** Splits a closed interval into per-local-day seconds. */
-export function splitByDay(startIso: string, endIso: string): { key: string; seconds: number }[] {
-  const start = new Date(startIso).getTime();
-  const end = new Date(endIso).getTime();
-  const out: { key: string; seconds: number }[] = [];
-  if (!(end > start)) return out;
-  let cur = start;
-  let p = tzParts(new Date(start));
-  let day = { y: p.y, m: p.m, d: p.d };
-  while (cur < end) {
-    const n = nextDay(day.y, day.m, day.d);
-    const boundary = localMidnight(n.y, n.m, n.d);
-    const segEnd = Math.min(end, boundary);
-    out.push({ key: keyOf(day.y, day.m, day.d), seconds: Math.round((segEnd - cur) / 1000) });
-    cur = segEnd;
-    day = n;
-  }
-  return out;
-}
-
+/** Duration of a closed session. Null while it is still open. Never negative. */
 export function sessionSeconds(s: Session): number | null {
   if (!s.ended_at) return null;
   return Math.max(0, Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000));
 }
 
-/** 0 -> "0h", 16200 -> "4h30min", 452700 -> "125h45min". Truncates leftover seconds. */
+/** How long an open session has been running. Never negative. */
+export function runningSeconds(s: Session, now = new Date()): number {
+  return Math.max(0, Math.round((now.getTime() - new Date(s.started_at).getTime()) / 1000));
+}
+
+/** 0 -> "0h", 16200 -> "4h30min", 452700 -> "125h45min". Menos de 1 min vira "45s". */
 export function formatDuration(seconds: number): string {
-  const totalMin = Math.floor(Math.max(0, seconds) / 60);
+  const total = Math.max(0, Math.floor(seconds));
+  if (total > 0 && total < 60) return `${total}s`;
+  const totalMin = Math.floor(total / 60);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return m === 0 ? `${h}h` : `${h}h${pad(m)}min`;
@@ -100,7 +100,7 @@ export type DayRow = {
   day: number;
   weekday: string;
   sessions: Session[]; // sessions that STARTED this day
-  seconds: number; // closed time falling on this day
+  seconds: number; // closed time attributed to this day (whole sessions)
   isToday: boolean;
 };
 export type Week = { days: DayRow[]; seconds: number };
@@ -112,7 +112,11 @@ export type MonthReport = {
   incomplete: Session[];
 };
 
-/** Month 1-12. Sessions may include any range; only time inside the month counts. */
+/**
+ * Month 1-12. A session counts on the local day it started, in full, so a
+ * 23:00 -> 02:00 shift lands entirely on the first day and never splits across
+ * days or months. Open sessions are excluded from totals (nothing is invented).
+ */
 export function buildMonth(year: number, month: number, sessions: Session[], now = new Date()): MonthReport {
   const perDay = new Map<string, number>();
   const startedOn = new Map<string, Session[]>();
@@ -120,7 +124,8 @@ export function buildMonth(year: number, month: number, sessions: Session[], now
     const k = dayKey(new Date(s.started_at));
     if (!startedOn.has(k)) startedOn.set(k, []);
     startedOn.get(k)!.push(s);
-    if (s.ended_at) for (const seg of splitByDay(s.started_at, s.ended_at)) perDay.set(seg.key, (perDay.get(seg.key) ?? 0) + seg.seconds);
+    const secs = sessionSeconds(s);
+    if (secs !== null) perDay.set(k, (perDay.get(k) ?? 0) + secs);
   }
   const todayKey = dayKey(now);
   const weeks: Week[] = [];
@@ -148,13 +153,13 @@ export function buildMonth(year: number, month: number, sessions: Session[], now
   return { weeks, totalSeconds: total, daysWorked, sessionCount: monthSessions.size, incomplete };
 }
 
-/** Seconds worked today (closed + running), for the main screen. */
+/** Seconds worked today: whole sessions that started today (plus the open one). */
 export function todaySeconds(sessions: Session[], now = new Date()): number {
   const k = dayKey(now);
   let t = 0;
   for (const s of sessions) {
-    const end = s.ended_at ?? now.toISOString();
-    for (const seg of splitByDay(s.started_at, end)) if (seg.key === k) t += seg.seconds;
+    if (dayKey(new Date(s.started_at)) !== k) continue;
+    t += sessionSeconds(s) ?? runningSeconds(s, now);
   }
   return t;
 }

@@ -1,12 +1,21 @@
 import { localMidnight, monthRangeUtc, type Session } from "./hours";
+import type { GeoFix } from "./geo";
+import { verifyPinOffline, type PinResult } from "./pin";
 import {
+  checkPin,
+  correctWork,
   endWork,
+  getAllRates,
+  getAllSessions,
   getMonthRate,
   getOpenSession,
   getSessionsBetween,
+  getTitular,
   saveMonthRate,
   startWork,
 } from "./sessions.functions";
+
+export type StartOutcome = { ok: boolean; session: Session | null };
 
 export const fetchOpenSession = (): Promise<Session | null> => getOpenSession();
 
@@ -18,10 +27,63 @@ export const fetchMonth = (y: number, m: number) => {
   return fetchSessionsBetween(r.from, r.to);
 };
 
-export const startSession = () => startWork();
+/** Todo o periodo registrado, para a ficha de ponto completa. */
+export const fetchAllSessions = (): Promise<Session[]> => getAllSessions();
 
-export const endSession = (id: string, endedAt?: string) =>
-  endWork({ data: endedAt === undefined ? { id } : { id, endedAt } });
+/** Nome e CPF do titular, gravados no cadastro da instalacao. */
+export const fetchTitular = () => getTitular();
+
+/** Valor da hora de cada mes fechado, para somar no periodo completo. */
+export const fetchAllRates = () => getAllRates();
+
+/**
+ * Confere a senha de confirmacao. O servidor decide sempre que responde; o hash
+ * local so entra quando o aparelho esta sem internet, para nao travar quem esta
+ * trabalhando sem sinal. Nesse caso o toque entra na fila e sobe depois.
+ */
+export const verifyPin = async (pin: string): Promise<PinResult> => {
+  try {
+    return await checkPin({ data: { pin } });
+  } catch {
+    if (await verifyPinOffline(pin)) return { ok: true, motivo: "ok", restantes: 0 };
+    return { ok: false, motivo: "sem_conexao", restantes: 0 };
+  }
+};
+
+const geoArgs = (geo?: GeoFix) => ({
+  lat: geo?.latitude ?? null,
+  lng: geo?.longitude ?? null,
+  geoStatus: geo?.status ?? null,
+});
+
+/** Never throws: a network failure is reported as ok:false so the caller can queue the tap. */
+export async function startSession(at?: string, geo?: GeoFix): Promise<StartOutcome> {
+  try {
+    const result = await startWork({ data: { ...(at ? { at } : {}), ...geoArgs(geo) } });
+    return { ok: true, session: result.session };
+  } catch {
+    return { ok: false, session: null };
+  }
+}
+
+/** Never throws: returns false when the server could not record the exit. */
+export async function endSession(id: string, endedAt?: string, geo?: GeoFix): Promise<boolean> {
+  try {
+    return await endWork({ data: { id, ...(endedAt === undefined ? {} : { endedAt }), ...geoArgs(geo) } });
+  } catch {
+    return false;
+  }
+}
+
+/** Correcao com motivo. Nunca lanca: a tela mostra a mensagem devolvida. */
+export async function fixSession(id: string, endedAt: string, reason: string): Promise<string | null> {
+  try {
+    await correctWork({ data: { id, endedAt, reason } });
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "Não foi possível corrigir.";
+  }
+}
 
 /** Hourly rate preserved for a given month's closing, or null when never saved. */
 export const fetchRate = (y: number, m: number): Promise<number | null> =>
