@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Fragment, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, CalendarX, Info, WifiOff, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -58,26 +58,56 @@ function History() {
         <button aria-label="Próximo mês" onClick={() => shift(1)} className="rounded-2xl bg-secondary p-3"><ChevronRight className="h-8 w-8" /></button>
       </section>
 
-      {report.incomplete.length > 0 && (
+      {!q.isError && report.incomplete.length > 0 && (
         <section className="rounded-3xl bg-warning p-5 text-warning-foreground">
-          <p className="flex items-center gap-2 text-lg font-bold"><AlertTriangle className="h-6 w-6" /> Sessão sem saída registrada</p>
+          <p className="flex items-center gap-2 text-lg font-bold"><AlertTriangle className="h-6 w-6" /> Você esqueceu de finalizar?</p>
+          <p className="mt-1 text-base">Existe uma entrada sem horário de saída. Essas horas só entram na soma depois que você informar a saída.</p>
           {report.incomplete.map((s) => (
             <div key={s.id} className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <span>Entrada {fmtDate(s.started_at)} às {fmtTime(s.started_at)}</span>
-              <button onClick={() => setFixing(s)} className="rounded-xl bg-card px-4 py-2 font-bold text-foreground">Informar saída</button>
+              <span className="text-base font-bold">Entrada {fmtDate(s.started_at)} às {fmtTime(s.started_at)}</span>
+              <button onClick={() => setFixing(s)} className="rounded-xl bg-card px-4 py-3 text-base font-bold text-foreground">Informar saída</button>
             </div>
           ))}
-          <p className="mt-2 text-sm">Essas horas não entram na soma até a saída ser informada.</p>
         </section>
       )}
 
       {q.isLoading ? (
         <div className="h-64 animate-pulse rounded-3xl bg-muted" />
+      ) : q.isError ? (
+        <section className="space-y-4 rounded-3xl bg-warning p-6 text-warning-foreground">
+          <p className="flex items-center gap-2 text-lg font-bold">
+            <WifiOff className="h-6 w-6" /> Sem conexão com seus horários
+          </p>
+          <p className="text-base">
+            Não conseguimos carregar este mês agora. Confira se o celular está com internet e tente de novo.
+            Seus horários já salvos não foram perdidos.
+          </p>
+          <button
+            onClick={() => q.refetch()}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-card px-4 py-4 text-lg font-bold text-foreground shadow-sm"
+          >
+            <RefreshCw className="h-5 w-5" /> Tentar de novo
+          </button>
+        </section>
+      ) : report.sessionCount === 0 ? (
+        <section className="rounded-3xl bg-card p-8 text-center shadow-soft">
+          <CalendarX className="mx-auto h-12 w-12 text-muted-foreground" />
+          <p className="mt-4 text-xl font-bold">Nenhum horário neste mês</p>
+          <p className="mt-2 text-base text-muted-foreground">
+            Você ainda não registrou horas em {MONTHS[ym.m - 1]} de {ym.y}. Use os botões acima para ver outro mês.
+          </p>
+        </section>
       ) : (
-        report.weeks.map((w, i) => <WeekTable key={i} index={i} week={w} />)
+        <>
+          <p className="flex items-start gap-2 rounded-2xl bg-secondary p-4 text-base text-secondary-foreground">
+            <Info className="mt-0.5 h-5 w-5 shrink-0" />
+            Seus horários do mês, organizados por semana. A coluna Horas mostra o total de cada dia e o total de cada semana.
+          </p>
+          {report.weeks.map((w, i) => <WeekTable key={i} index={i} week={w} />)}
+        </>
       )}
 
-      <Summary report={report} ym={ym} />
+      <Summary report={report} ym={ym} hidden={q.isError} />
       <FixDialog session={fixing} onClose={() => setFixing(null)} />
     </div>
   );
@@ -93,7 +123,7 @@ function WeekTable({ week, index }: { week: ReturnType<typeof buildMonth>["weeks
             <th className="px-3 py-2">Dia</th>
             <th className="px-2 py-2">Entrada</th>
             <th className="px-2 py-2">Saída</th>
-            <th className="px-3 py-2 text-right">Horas</th>
+            <th className="px-3 py-2 text-right">Total do dia</th>
           </tr>
         </thead>
         <tbody>
@@ -150,7 +180,7 @@ function WeekTable({ week, index }: { week: ReturnType<typeof buildMonth>["weeks
   );
 }
 
-function Summary({ report, ym }: { report: ReturnType<typeof buildMonth>; ym: { y: number; m: number } }) {
+function Summary({ report, ym, hidden }: { report: ReturnType<typeof buildMonth>; ym: { y: number; m: number }; hidden?: boolean }) {
   const qc = useQueryClient();
   const rateQ = useQuery({ queryKey: ["rate", ym.y, ym.m], queryFn: () => fetchRate(ym.y, ym.m) });
   const [text, setText] = useState("");
@@ -167,19 +197,22 @@ function Summary({ report, ym }: { report: ReturnType<typeof buildMonth>; ym: { 
   const save = useMutation({
     mutationFn: () => saveRate(ym.y, ym.m, valid, totals),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["rate", ym.y, ym.m] }),
-    onError: () => toast.error("Não foi possível salvar o valor."),
+    onError: () => toast.error("Não foi possível salvar o valor. Tente de novo."),
   });
+
+  if (hidden) return null;
 
   return (
     <section className="rounded-3xl border-2 border-primary bg-card p-6 shadow-soft">
       <h2 className="font-display text-2xl font-extrabold text-primary">RESUMO DO MÊS</h2>
       <dl className="mt-4 space-y-3 text-lg">
         <div className="flex justify-between"><dt>Dias com trabalho</dt><dd className="font-bold">{report.daysWorked}</dd></div>
-        <div className="flex justify-between"><dt>Sessões</dt><dd className="font-bold">{report.sessionCount}</dd></div>
+        <div className="flex justify-between"><dt>Sessões (entradas e saídas)</dt><dd className="font-bold">{report.sessionCount}</dd></div>
         <div className="flex items-center justify-between border-t pt-3"><dt className="font-bold">Total trabalhado</dt><dd className="font-display text-4xl font-extrabold text-primary">{formatDuration(report.totalSeconds)}</dd></div>
       </dl>
       <label className="mt-6 block">
-        <span className="mb-2 block text-lg font-bold">Valor da sua hora (opcional)</span>
+        <span className="mb-1 block text-lg font-bold">Quanto você ganha por hora? (opcional)</span>
+        <span className="mb-2 block text-base text-muted-foreground">Preencha só se quiser ver o valor a receber. Pode deixar vazio.</span>
         <div className="flex items-center gap-2 rounded-2xl border-2 border-input bg-background px-4 focus-within:border-primary">
           <span className="text-xl font-bold text-muted-foreground">R$</span>
           <input
@@ -194,7 +227,7 @@ function Summary({ report, ym }: { report: ReturnType<typeof buildMonth>; ym: { 
       </label>
       {valid !== null && (
         <div className="mt-4 flex items-center justify-between rounded-2xl bg-accent p-4">
-          <span className="text-lg font-bold text-accent-foreground">Total estimado</span>
+          <span className="text-lg font-bold text-accent-foreground">Valor a receber</span>
           <span className="font-display text-3xl font-extrabold text-accent-foreground">{formatBRL(earningsCents(report.totalSeconds, valid))}</span>
         </div>
       )}
@@ -212,14 +245,15 @@ function FixDialog({ session, onClose }: { session: Session | null; onClose: () 
       if (new Date(iso) > new Date()) throw new Error("A saída não pode ser no futuro.");
       return endSession(session.id, iso);
     },
-    onSuccess: () => { toast.success("Saída registrada."); qc.invalidateQueries(); onClose(); },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar."),
+    onSuccess: () => { toast.success("Saída registrada! As horas entraram na soma."); qc.invalidateQueries(); onClose(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível salvar. Tente de novo."),
   });
   return (
     <Dialog open={!!session} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader><DialogTitle className="text-2xl">Informar horário de saída</DialogTitle></DialogHeader>
         {session && <p className="text-lg">Entrada: {fmtDate(session.started_at)} às {fmtTime(session.started_at)}</p>}
+        <p className="text-base text-muted-foreground">Escolha abaixo o horário em que você parou de trabalhar.</p>
         <input type="datetime-local" className="w-full rounded-2xl border-2 border-input px-4 py-4 text-xl" value={value} onChange={(e) => setValue(e.target.value)} />
         <button disabled={!value || fix.isPending} onClick={() => fix.mutate()} className="btn-giant btn-start !min-h-16 !text-xl">SALVAR SAÍDA</button>
       </DialogContent>
