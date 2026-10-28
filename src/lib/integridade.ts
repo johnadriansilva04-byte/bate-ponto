@@ -1,6 +1,11 @@
 // ============================================================================
 // DECLARACAO DE INTEGRIDADE — leia antes de alterar qualquer coisa.
 //
+// A finalidade deste registro esta declarada em src/lib/finalidade.ts e gravada
+// no banco (migration 0009, tabela public.declaracao_finalidade): instruir pedido
+// de reconhecimento judicial de tempo trabalhado, por erro no registro civil que
+// trocou o nome do titular. Este arquivo cuida da parte tecnica dessa prova.
+//
 // Este arquivo e o "recado" datado do projeto: registra quando esta versao foi
 // lancada, qual impressao digital o banco tinha, e onde ficam as provas
 // externas que sustentam a afirmacao. Ele NAO e um mecanismo de seguranca —
@@ -88,6 +93,18 @@ export const MARCOS: readonly MarcoIntegridade[] = [
     impressaoEsquema: "a96febd225347ede407261927ca727070286a26e5260963ccb53a7361620203f",
     ancoraId: 2,
     prova: "Supabase → Logs → Postgres (log_statement='ddl'), marco 2 gravado em 2026-10-28T07:38:37Z",
+  },
+  {
+    declaradoEm: "28/10/2026 05:16",
+    declaradoEmUtc: "2026-10-28T08:16:05Z",
+    versao: "1.0.0",
+    // A declaracao de finalidade (migration 0009) acrescentou tabela, funcao e
+    // trigger, entao a impressao mudou. Nao se edita o marco 2: registra-se
+    // este, para que o historico mostre que a estrutura mudou DE PROPOSITO,
+    // na data, e nao por alteracao silenciosa.
+    impressaoEsquema: "6293e0a2a4e5245029441e4eaa78db8258b5e2ab8b4a0b95c707715824a4eaec",
+    ancoraId: 3,
+    prova: "Supabase → Logs → Postgres (log_statement='ddl'), marco 3 gravado em 2026-10-28T08:16:05Z, com a migration 0009 (declaracao de finalidade) aplicada no mesmo instante",
   },
 ];
 

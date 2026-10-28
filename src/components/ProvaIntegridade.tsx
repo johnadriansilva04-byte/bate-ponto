@@ -3,6 +3,7 @@ import { ShieldCheck, ShieldAlert, Fingerprint } from "lucide-react";
 import { fetchIntegrityState } from "@/lib/sessions-api";
 import { MARCO_ATUAL, impressaoCurta } from "@/lib/integridade";
 import { conferirIntegridade } from "@/lib/conferencia";
+import { FINALIDADE } from "@/lib/finalidade";
 
 /**
  * Conferencia de integridade: mostra a impressao digital do banco e compara com
@@ -67,6 +68,25 @@ export function ProvaIntegridade() {
           </dd>
         </div>
       </dl>
+
+      {/* Para que serve este registro. Vem antes das instrucoes tecnicas:
+          sem a finalidade, os numeros nao significam nada para quem le. */}
+      <div className="mt-4 rounded-2xl bg-secondary p-4">
+        <p className="font-bold text-foreground">Para que serve este registro</p>
+        <p className="mt-2 text-base text-muted-foreground">{FINALIDADE.proposito}</p>
+        <p className="mt-3 font-bold text-foreground">O que ele prova</p>
+        <ul className="mt-1 list-disc space-y-1 pl-5 text-base text-muted-foreground">
+          {FINALIDADE.oQueProva.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+        <p className="mt-3 font-bold text-foreground">O que ele não prova</p>
+        <ul className="mt-1 list-disc space-y-1 pl-5 text-base text-muted-foreground">
+          {FINALIDADE.oQueNaoProva.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      </div>
 
       <p className="mt-4 rounded-2xl bg-secondary p-4 text-base text-muted-foreground">
         Guarde este código fora do celular (pode ser uma foto). Se algum dia alguém alterar a estrutura do banco, este

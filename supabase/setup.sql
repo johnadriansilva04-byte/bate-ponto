@@ -1277,3 +1277,70 @@ GRANT EXECUTE ON FUNCTION public.schema_fingerprint() TO service_role;
 REVOKE ALL ON FUNCTION public.integrity_state() FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.integrity_state() TO service_role;
+
+-- ============================================================================
+-- 0009: declaracao de finalidade — por que este registro existe.
+--
+-- O banco provava QUE os horarios nao mudaram; esta secao grava PARA QUE eles
+-- servem. O titular trabalha sem vinculo formal e sem comprovante de jornada
+-- porque um erro no registro civil trocou seu nome e os documentos nao conferem
+-- com o nome pelo qual ele trabalha e recebe. A finalidade declarada e permitir
+-- que a Justica reconheca o tempo efetivamente trabalhado ao final do processo.
+--
+-- Somente-insercao, como os marcos: uma finalidade reescrevivel nao prova nada.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.declaracao_finalidade (
+  id bigserial PRIMARY KEY,
+  installation_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+  nome_de_fato text NOT NULL,
+  nome_no_registro text NOT NULL,
+  proposito text NOT NULL,
+  o_que_prova text[] NOT NULL,
+  o_que_nao_prova text[] NOT NULL,
+  prova_externa text NOT NULL,
+  limites text[] NOT NULL,
+  criado_em timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.declaracao_finalidade ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.declaracao_finalidade FROM anon, authenticated;
+
+GRANT ALL ON public.declaracao_finalidade TO service_role;
+
+GRANT USAGE, SELECT ON SEQUENCE public.declaracao_finalidade_id_seq TO service_role;
+
+CREATE OR REPLACE FUNCTION public.finalidade_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  RAISE EXCEPTION 'Declaracao de finalidade e somente-insercao. Registre uma nova declaracao datada em vez de alterar.';
+END $$;
+
+DROP TRIGGER IF EXISTS df_guard ON public.declaracao_finalidade;
+
+CREATE TRIGGER df_guard
+  BEFORE UPDATE OR DELETE ON public.declaracao_finalidade
+  FOR EACH ROW EXECUTE FUNCTION public.finalidade_guard();
+
+CREATE OR REPLACE FUNCTION public.finalidade_atual()
+RETURNS TABLE (
+  nome_de_fato text,
+  nome_no_registro text,
+  proposito text,
+  o_que_prova text[],
+  o_que_nao_prova text[],
+  prova_externa text,
+  limites text[],
+  declarada_em timestamptz
+) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT d.nome_de_fato, d.nome_no_registro, d.proposito, d.o_que_prova,
+         d.o_que_nao_prova, d.prova_externa, d.limites, d.criado_em
+    FROM public.declaracao_finalidade d
+   ORDER BY d.criado_em DESC
+   LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.finalidade_atual() FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.finalidade_atual() TO service_role;

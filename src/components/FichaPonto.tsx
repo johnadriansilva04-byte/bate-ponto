@@ -4,6 +4,7 @@ import { formatCoords, geoLabel } from "@/lib/geo";
 import { TITULAR } from "@/lib/titular";
 import { BUILD } from "@/lib/version";
 import { MARCO_ATUAL } from "@/lib/integridade";
+import { FINALIDADE, NOME_DE_FATO, NOME_NO_REGISTRO } from "@/lib/finalidade";
 
 export type FichaPeriodo = { rotulo: string; de: string | null; ate: string | null };
 
@@ -55,6 +56,13 @@ export function FichaPonto({ sessions, periodo, valorHora, totalSeconds, diasTra
         </p>
         <p>
           <strong>CPF:</strong> {cpf || TITULAR.cpf}
+        </p>
+        {/* O nome pelo qual ele trabalha difere do registro civil por erro em
+            correcao. Declarar isso aqui evita que a divergencia, quando notada
+            depois, pareca irregularidade. */}
+        <p>
+          <strong>Nome de fato:</strong> {NOME_DE_FATO} — nome pelo qual trabalha e assina, em correção no registro
+          civil (consta como {NOME_NO_REGISTRO}).
         </p>
         <p>
           <strong>Local de trabalho:</strong> {localTrabalho ?? "não informado"}
@@ -135,6 +143,11 @@ export function FichaPonto({ sessions, periodo, valorHora, totalSeconds, diasTra
       </section>
 
       <section className="ficha-nota">
+        {/* Finalidade declarada: o documento diz para que serve. Registro
+            tecnico sem finalidade declarada vale menos em juizo. */}
+        <p>
+          <strong>Finalidade deste documento:</strong> {FINALIDADE.proposito}
+        </p>
         <p>
           Cada linha desta ficha traz um código de integridade SHA-256 calculado no servidor sobre os horários e as
           coordenadas do respectivo registro. Qualquer alteração posterior no conteúdo muda o código, o que permite
@@ -145,6 +158,11 @@ export function FichaPonto({ sessions, periodo, valorHora, totalSeconds, diasTra
           conferida e congelada com a impressão digital {MARCO_ATUAL.impressaoEsquema} (marco nº {MARCO_ATUAL.ancoraId}).
           O Supabase mantém um registro próprio de toda alteração feita no banco, com data e hora, que pode ser
           consultado no painel do projeto.
+        </p>
+        {/* Limite declarado de proposito: prometer mais do que se entrega
+            enfraquece a prova. */}
+        <p>
+          <strong>O que este registro não prova:</strong> {FINALIDADE.oQueNaoProva[0]} {FINALIDADE.oQueNaoProva[1]}
         </p>
       </section>
 

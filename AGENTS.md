@@ -38,3 +38,22 @@ O que isso prova: a estrutura do banco não mudou desde a data declarada. Testad
 Detalhe operacional descoberto: `log_statement` não pode ser mudado no nível do banco (`permission denied`), mas **pode** no nível do role (`ALTER ROLE postgres SET log_statement = 'all'`). Com `all`, até DML puro (INSERT/UPDATE/DELETE) entra no log — confirmado com um marcador `CANARIO_LOG_ALL` que apareceu no log em segundos. Hoje está em `ddl` (padrão do Supabase). O log tem retenção de ~24h, então serve para auditoria recente, não histórica. Backups automáticos exigem plano Enterprise (a API devolve 402), por isso `backups: []`.
 
 A declaração legível fica em `src/lib/integridade.ts` (`MARCOS`), a comparação pura em `src/lib/conferencia.ts` (testada), e a tela em `src/components/ProvaIntegridade.tsx` (aba HISTÓRICO, junto com a ficha impressa). Para declarar uma mudança de estrutura: calcule `select public.schema_fingerprint()`, insira um marco novo em `integrity_anchors` e acrescente o objeto correspondente a `MARCOS`.
+
+## Finalidade do registro (prova para a Justiça) — migration 0009
+
+Este aplicativo não é um controle de ponto qualquer: o registro existe para **instruir um pedido de reconhecimento judicial de tempo trabalhado**. Leia `src/lib/finalidade.ts` antes de mexer no que envolve prova, lacre ou ficha.
+
+O titular trabalha sem vínculo formal e sem comprovante de jornada porque um erro no registro civil trocou seu nome — `JOAO DE JESUS DO ROSARIO` (nome de fato, pelo qual trabalha e assina) consta como `JOAO DE DEUS DO ROSARIO` (nome no registro, em correção). Enquanto a correção tramita, os documentos não conferem com o nome pelo qual ele trabalha e recebe. O que existe para provar o tempo: os PIX (mostram pagamento, não jornada) e este aplicativo (mostra jornada, com hora e lugar). **Não remova essa declaração, e não a trate como texto decorativo** — ela é a razão do sistema existir.
+
+A migration 0009 grava a finalidade no banco (`public.declaracao_finalidade`, somente-inserção pelo trigger `finalidade_guard()`, lida por `finalidade_atual()`), leva o texto para a ficha impressa (`src/components/FichaPonto.tsx`, seção *Finalidade deste documento*) e para a tela (`src/components/ProvaIntegridade.tsx`). O mesmo texto foi gravado no **log externo** do Supabase como comentário seguido de leitura (`REGISTRADA_NO_LOG_EM` em `finalidade.ts`), porque o log é mantido pela plataforma, fora do banco — é a prova que o aplicativo não alcança nem apaga.
+
+Regras ao mexer nisso:
+
+- A declaração é **honesta por desenho**: ela lista o que a prova sustenta **e o que não sustenta** (não prova que ele estava trabalhando no instante do toque; não é imune a quem tem a chave do banco; não substitui prova documental). Não reescreva isso para parecer mais forte. Registro que promete mais do que entrega vale menos em juízo.
+- Não edite uma declaração nem um marco: ambos são somente-inserção. Registre uma nova linha datada.
+- Ao declarar mudança de estrutura, acrescente o marco em `src/lib/integridade.ts` **e** a linha em `integrity_anchors`. Hoje há 3 marcos; o atual é o nº 3 (`6293e0a2…`, criado pela 0009).
+
+Limites medidos (não suponha, foi medido em 28/10/2026):
+
+- O log do Supabase no plano atual **retém ~24h**. A API de logs para de retornar linhas acima de ~24h de janela; o projeto é novo, então todo o histórico cabia nessa janela. O log serve para auditoria **recente**, não como arquivo histórico. Para valor probatório de longo prazo, exporte a ficha em PDF e mantenha backup do banco.
+- Escritas do app via PostgREST (protocolo estendido) **não** aparecem no log do Postgres com a configuração padrão — só a requisição HTTP (`POST | 201 | /rest/v1/…`). Para registrar o SQL da escrita (sem os valores dos parâmetros, que o log não imprime), é preciso `ALTER ROLE … SET log_min_duration_statement = 0`. Aplicado em `service_role`, `authenticator`, `anon` e `postgres`. Mesmo assim o log **não** guarda os valores gravados — apenas a forma da consulta. Não prometa a ninguém que o log prova *o que* foi gravado.
