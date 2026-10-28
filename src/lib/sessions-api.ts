@@ -1,7 +1,11 @@
 import { localMidnight, monthRangeUtc, type Session } from "./hours";
 import type { GeoFix } from "./geo";
 import { verifyPinOffline, type PinResult } from "./pin";
+import { deviceId } from "./device";
 import {
+  authorizeDevice,
+  changeWorkplace,
+  checkDevice,
   checkPin,
   correctWork,
   endWork,
@@ -11,6 +15,8 @@ import {
   getOpenSession,
   getSessionsBetween,
   getTitular,
+  getWorkplace,
+  getWorkplaceHistory,
   saveMonthRate,
   startWork,
 } from "./sessions.functions";
@@ -95,6 +101,37 @@ export const saveRate = (
   rate: number | null,
   totals: { totalSeconds: number; daysWorked: number; sessionCount: number },
 ) => saveMonthRate({ data: { year: y, month: m, hourlyRate: rate, ...totals } });
+
+/** Estado deste aparelho: liberado ou precisa da senha. */
+export const fetchDeviceState = () => checkDevice({ data: { device: deviceId() } });
+
+/** Libera este aparelho com a mesma senha usada para bater o ponto. */
+export const authorizeThisDevice = (pin: string) =>
+  authorizeDevice({ data: { device: deviceId(), pin } });
+
+/** Local de trabalho em uso agora. */
+export const fetchWorkplace = () => getWorkplace();
+
+/** Troca o local de trabalho, com motivo. */
+export const saveWorkplace = (
+  nome: string,
+  endereco: string,
+  reason: string,
+  local?: { lat: number | null; lng: number | null; raioMetros: number },
+) =>
+  changeWorkplace({
+    data: {
+      nome,
+      endereco,
+      reason,
+      lat: local?.lat ?? null,
+      lng: local?.lng ?? null,
+      raioMetros: local?.raioMetros ?? 300,
+    },
+  });
+
+/** Histórico das trocas de local. */
+export const fetchWorkplaceHistory = () => getWorkplaceHistory();
 
 /** "2026-05-05T17:30" in São Paulo local time -> ISO UTC */
 export function localInputToIso(v: string): string {

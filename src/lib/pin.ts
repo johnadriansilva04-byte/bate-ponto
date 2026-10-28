@@ -38,14 +38,21 @@ function sameHash(a: string, b: string): boolean {
 
 export async function verifyPinOffline(pin: string): Promise<boolean> {
   if (!/^\d{6}$/.test(pin)) return false;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: enc.encode(SALT), iterations: ITERATIONS, hash: "SHA-256" },
-    key,
-    LENGTH_BITS,
-  );
-  return sameHash(toHex(bits), STORED);
+  // Navegador antigo pode nao ter crypto.subtle (so existe em contexto seguro).
+  // Sem ele nao ha como conferir aqui; quem decide volta a ser o servidor.
+  if (typeof crypto === "undefined" || !crypto.subtle) return false;
+  try {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt: enc.encode(SALT), iterations: ITERATIONS, hash: "SHA-256" },
+      key,
+      LENGTH_BITS,
+    );
+    return sameHash(toHex(bits), STORED);
+  } catch {
+    return false;
+  }
 }
 
 /** Mensagem curta para a tela, a partir do motivo devolvido pelo servidor. */

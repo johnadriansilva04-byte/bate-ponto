@@ -18,6 +18,8 @@ export type Session = {
   sealed_at?: string | null;
   titular_nome?: string | null;
   titular_cpf?: string | null;
+  workplace_id?: string | null;
+  workplace_label?: string | null;
 };
 
 const partsFmt = new Intl.DateTimeFormat("en-US", {

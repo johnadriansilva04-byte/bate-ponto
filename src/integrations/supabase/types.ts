@@ -152,6 +152,27 @@ export type Database = {
         }
         Relationships: []
       }
+      trusted_devices: {
+        Row: {
+          ativo: boolean
+          criado_em: string
+          device_id: string
+          visto_em: string
+        }
+        Insert: {
+          ativo?: boolean
+          criado_em?: string
+          device_id: string
+          visto_em?: string
+        }
+        Update: {
+          ativo?: boolean
+          criado_em?: string
+          device_id?: string
+          visto_em?: string
+        }
+        Relationships: []
+      }
       work_sessions: {
         Row: {
           created_at: string
@@ -174,6 +195,8 @@ export type Database = {
           titular_cpf: string | null
           titular_nome: string | null
           updated_at: string
+          workplace_id: string | null
+          workplace_label: string | null
         }
         Insert: {
           created_at?: string
@@ -196,6 +219,8 @@ export type Database = {
           titular_cpf?: string | null
           titular_nome?: string | null
           updated_at?: string
+          workplace_id?: string | null
+          workplace_label?: string | null
         }
         Update: {
           created_at?: string
@@ -218,6 +243,83 @@ export type Database = {
           titular_cpf?: string | null
           titular_nome?: string | null
           updated_at?: string
+          workplace_id?: string | null
+          workplace_label?: string | null
+        }
+        Relationships: []
+      }
+      workplace_audit: {
+        Row: {
+          action: string
+          changed_at: string
+          endereco_anterior: string | null
+          endereco_novo: string | null
+          id: string
+          motivo: string | null
+          nome_anterior: string | null
+          nome_novo: string | null
+          workplace_id: string | null
+        }
+        Insert: {
+          action: string
+          changed_at?: string
+          endereco_anterior?: string | null
+          endereco_novo?: string | null
+          id?: string
+          motivo?: string | null
+          nome_anterior?: string | null
+          nome_novo?: string | null
+          workplace_id?: string | null
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          endereco_anterior?: string | null
+          endereco_novo?: string | null
+          id?: string
+          motivo?: string | null
+          nome_anterior?: string | null
+          nome_novo?: string | null
+          workplace_id?: string | null
+        }
+        Relationships: []
+      }
+      workplaces: {
+        Row: {
+          ativo: boolean
+          criado_em: string
+          encerrado_em: string | null
+          endereco: string
+          id: string
+          installation_id: string
+          latitude: number | null
+          longitude: number | null
+          nome: string
+          raio_metros: number
+        }
+        Insert: {
+          ativo?: boolean
+          criado_em?: string
+          encerrado_em?: string | null
+          endereco: string
+          id?: string
+          installation_id?: string
+          latitude?: number | null
+          longitude?: number | null
+          nome: string
+          raio_metros?: number
+        }
+        Update: {
+          ativo?: boolean
+          criado_em?: string
+          encerrado_em?: string | null
+          endereco?: string
+          id?: string
+          installation_id?: string
+          latitude?: number | null
+          longitude?: number | null
+          nome?: string
+          raio_metros?: number
         }
         Relationships: []
       }
@@ -274,8 +376,35 @@ export type Database = {
         Args: { p_new_end: string; p_reason: string; p_session_id: string }
         Returns: undefined
       }
+      device_authorize: {
+        Args: { p_device: string; p_pin: string }
+        Returns: Json
+      }
+      device_check: { Args: { p_device: string }; Returns: Json }
       pin_verify: { Args: { p_pin: string }; Returns: Json }
       session_hash_valid: { Args: { p_id: string }; Returns: boolean }
+      set_workplace: {
+        Args: {
+          p_endereco: string
+          p_lat?: number
+          p_lng?: number
+          p_nome: string
+          p_raio?: number
+          p_reason: string
+        }
+        Returns: string
+      }
+      workplace_current: {
+        Args: never
+        Returns: {
+          endereco: string
+          id: string
+          latitude: number
+          longitude: number
+          nome: string
+          raio_metros: number
+        }[]
+      }
       ws_hash:
         | {
             Args: {
@@ -290,6 +419,23 @@ export type Database = {
               p_slat: number
               p_slng: number
               p_started: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_cpf: string
+              p_elat: number
+              p_elng: number
+              p_ended: string
+              p_id: string
+              p_installation: string
+              p_nome: string
+              p_prev: string
+              p_slat: number
+              p_slng: number
+              p_started: string
+              p_workplace: string
             }
             Returns: string
           }
@@ -322,6 +468,24 @@ export type Database = {
               p_slat: number
               p_slng: number
               p_started: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_cpf: string
+              p_duration: number
+              p_elat: number
+              p_elng: number
+              p_ended: string
+              p_id: string
+              p_installation: string
+              p_nome: string
+              p_prev: string
+              p_slat: number
+              p_slng: number
+              p_started: string
+              p_workplace: string
             }
             Returns: string
           }

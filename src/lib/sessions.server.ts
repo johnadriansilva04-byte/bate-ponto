@@ -9,7 +9,7 @@ import type { Session } from "./hours";
 // Uma unica string literal: o Supabase infere os tipos a partir dela, e uma
 // concatenacao com "+" viraria "string" e derrubaria a checagem de tipos.
 const SESSION_COLUMNS =
-  "id,started_at,ended_at,start_latitude,start_longitude,end_latitude,end_longitude,start_geo_status,end_geo_status,recorded_started_at,recorded_ended_at,session_hash,prev_hash,sealed_at,titular_nome,titular_cpf" as const;
+  "id,started_at,ended_at,start_latitude,start_longitude,end_latitude,end_longitude,start_geo_status,end_geo_status,recorded_started_at,recorded_ended_at,session_hash,prev_hash,sealed_at,titular_nome,titular_cpf,workplace_id,workplace_label" as const;
 
 export type StartResult = { session: Session | null; alreadyOpen: boolean };
 
@@ -172,6 +172,112 @@ export async function verifyPin(pin: string): Promise<PinResult> {
     motivo: (r.motivo as PinResult["motivo"]) ?? "senha_incorreta",
     restantes: typeof r.restantes === "number" ? r.restantes : 0,
   };
+}
+
+export type DeviceState = { conhecido: boolean; total: number; valido: boolean };
+
+/** Este aparelho esta na lista de liberados? */
+export async function checkDevice(device: string): Promise<DeviceState> {
+  const { data, error } = await supabaseAdmin.rpc("device_check", { p_device: device });
+  if (error) throw new Error(error.message);
+  const r = (data ?? {}) as { conhecido?: boolean; total?: number; valido?: boolean };
+  return { conhecido: r.conhecido === true, total: r.total ?? 0, valido: r.valido !== false };
+}
+
+/** Libera o aparelho. O primeiro entra sem senha; os demais exigem a senha. */
+export async function authorizeDevice(device: string, pin: string): Promise<PinResult> {
+  const { data, error } = await supabaseAdmin.rpc("device_authorize", { p_device: device, p_pin: pin });
+  if (error) throw new Error(error.message);
+  const r = (data ?? {}) as { ok?: boolean; motivo?: string; restantes?: number };
+  return {
+    ok: r.ok === true,
+    motivo: (r.motivo as PinResult["motivo"]) ?? "senha_incorreta",
+    restantes: typeof r.restantes === "number" ? r.restantes : 0,
+  };
+}
+
+export type Workplace = {
+  id: string;
+  nome: string;
+  endereco: string;
+  latitude: number | null;
+  longitude: number | null;
+  raioMetros: number;
+};
+
+/** Local de trabalho em uso agora, ou null quando nenhum esta ativo. */
+export async function selectWorkplace(): Promise<Workplace | null> {
+  const { data, error } = await supabaseAdmin.rpc("workplace_current");
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as {
+    id: string;
+    nome: string;
+    endereco: string;
+    latitude: number | null;
+    longitude: number | null;
+    raio_metros: number | null;
+  }[];
+  const w = rows[0];
+  if (!w) return null;
+  return {
+    id: w.id,
+    nome: w.nome,
+    endereco: w.endereco,
+    latitude: w.latitude,
+    longitude: w.longitude,
+    raioMetros: w.raio_metros ?? 300,
+  };
+}
+
+/** Troca o local de trabalho: exige motivo e grava no log de auditoria. */
+export async function setWorkplace(
+  nome: string,
+  endereco: string,
+  reason: string,
+  lat: number | null,
+  lng: number | null,
+  raioMetros: number,
+): Promise<void> {
+  // Os tipos gerados usam `exactOptionalPropertyTypes`: a chave so entra quando
+  // existe coordenada, em vez de receber undefined.
+  const args: { p_nome: string; p_endereco: string; p_reason: string; p_raio: number; p_lat?: number; p_lng?: number } = {
+    p_nome: nome,
+    p_endereco: endereco,
+    p_reason: reason,
+    p_raio: raioMetros,
+  };
+  if (lat !== null && lng !== null) {
+    args.p_lat = lat;
+    args.p_lng = lng;
+  }
+
+  const { error } = await supabaseAdmin.rpc("set_workplace", args);
+  if (error) throw new Error(error.message);
+}
+
+export type WorkplaceChange = {
+  action: string;
+  motivo: string | null;
+  enderecoAnterior: string | null;
+  enderecoNovo: string | null;
+  changedAt: string;
+};
+
+/** Historico das trocas de local, do mais recente para o mais antigo. */
+export async function selectWorkplaceHistory(): Promise<WorkplaceChange[]> {
+  const { data, error } = await supabaseAdmin
+    .from("workplace_audit")
+    .select("action, motivo, endereco_anterior, endereco_novo, changed_at")
+    .order("changed_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    action: r.action,
+    motivo: r.motivo,
+    enderecoAnterior: r.endereco_anterior,
+    enderecoNovo: r.endereco_novo,
+    changedAt: r.changed_at,
+  }));
 }
 
 export async function selectMonthRate(year: number, month: number): Promise<MonthRate | null> {

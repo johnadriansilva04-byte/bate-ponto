@@ -14,6 +14,8 @@ type Props = {
   diasTrabalhados: number;
   nome: string;
   cpf: string;
+  /** Local de trabalho em vigor, mostrado na qualificacao do documento. */
+  localTrabalho?: string | null;
 };
 
 const linha = (s: Session) => ({
@@ -24,13 +26,14 @@ const linha = (s: Session) => ({
   gps: `${formatCoords(s.start_latitude, s.start_longitude)} → ${formatCoords(s.end_latitude, s.end_longitude)}`,
   geo: s.start_geo_status === "ok" && s.end_geo_status === "ok" ? "" : geoLabel(s.end_geo_status ?? s.start_geo_status),
   hash: s.session_hash ?? "—",
+  local: s.workplace_label ?? null,
 });
 
 /**
  * Ficha de ponto em folha A4. Fica escondida na tela e so aparece na impressao
  * (ou no "Salvar como PDF"), com fundo branco porque papel e branco.
  */
-export function FichaPonto({ sessions, periodo, valorHora, totalSeconds, diasTrabalhados, nome, cpf }: Props) {
+export function FichaPonto({ sessions, periodo, valorHora, totalSeconds, diasTrabalhados, nome, cpf, localTrabalho }: Props) {
   const valorTotal = valorHora !== null ? (totalSeconds / 3600) * valorHora : null;
   const emitidoEm = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
@@ -51,6 +54,9 @@ export function FichaPonto({ sessions, periodo, valorHora, totalSeconds, diasTra
         </p>
         <p>
           <strong>CPF:</strong> {cpf || TITULAR.cpf}
+        </p>
+        <p>
+          <strong>Local de trabalho:</strong> {localTrabalho ?? "não informado"}
         </p>
         <p>
           <strong>Período:</strong> {periodo.rotulo}
@@ -95,6 +101,13 @@ export function FichaPonto({ sessions, periodo, valorHora, totalSeconds, diasTra
                   <tr>
                     <td colSpan={6} className="ficha-obs">
                       Observação de localização: {l.geo}.
+                    </td>
+                  </tr>
+                )}
+                {l.local && l.local !== localTrabalho && (
+                  <tr>
+                    <td colSpan={6} className="ficha-obs">
+                      Local de trabalho registrado: {l.local}.
                     </td>
                   </tr>
                 )}

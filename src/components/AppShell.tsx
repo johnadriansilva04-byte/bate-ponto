@@ -1,17 +1,36 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Clock, CalendarDays } from "lucide-react";
 import { buildLabel } from "@/lib/version";
+import { InstallCard } from "@/components/InstallCard";
+import { DeviceGate } from "@/components/DeviceGate";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const tab =
     "flex flex-1 flex-col items-center gap-1 rounded-2xl py-3 text-xl font-bold text-muted-foreground transition-colors";
+
+  // Registra o service worker, que e o que permite instalar no celular.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    // Em desenvolvimento o service worker atrapalha o recarregamento; so producao.
+    if (import.meta.env.DEV) return;
+    void navigator.serviceWorker.register("/sw.js").catch(() => {
+      // Sem instalacao o aplicativo continua funcionando pelo navegador.
+    });
+  }, []);
+
   return (
     <div className="app-shell mx-auto flex min-h-screen max-w-2xl flex-col px-4 pb-28 pt-4">
       <header className="mb-4 flex items-center justify-between">
         <span className="font-display text-2xl font-extrabold text-primary">Meu Ponto</span>
       </header>
-      <main className="flex flex-1 flex-col justify-center">{children}</main>
+      <main className="flex flex-1 flex-col justify-center">
+        {/* Aparelho novo precisa da senha uma vez; liberado, segue direto. */}
+        <DeviceGate>{children}</DeviceGate>
+      </main>
+      <div className="mt-6">
+        <InstallCard />
+      </div>
       {/* Marco temporal do codigo: fica visivel e nao e apagado por engano. */}
       <p className="no-print mt-6 text-center text-xs text-muted-foreground">{buildLabel}</p>
       <nav className="no-print fixed inset-x-0 bottom-0 z-20 border-t bg-card shadow-soft">

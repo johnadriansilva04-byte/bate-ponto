@@ -1,12 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, AlertTriangle, CalendarX, Info, WifiOff, RefreshCw, Printer, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, CalendarX, WifiOff, RefreshCw, Printer, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { FichaPonto } from "@/components/FichaPonto";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { endSession, fetchAllRates, fetchAllSessions, fetchMonth, fetchRate, fetchTitular, fixSession, localInputToIso, saveRate } from "@/lib/sessions-api";
+import {
+  endSession, fetchAllRates, fetchAllSessions, fetchMonth, fetchRate, fetchTitular, fetchWorkplace, fixSession,
+  localInputToIso, saveRate,
+} from "@/lib/sessions-api";
 import {
   buildMonth, dayKey, earningsCents, fmtDate, fmtTime, formatBRL, formatDuration, sessionSeconds, tzParts, type Session,
 } from "@/lib/hours";
@@ -41,6 +44,8 @@ function History() {
   const allQ = useQuery({ queryKey: ["all"], queryFn: fetchAllSessions, enabled: scope === "tudo" });
   const titularQ = useQuery({ queryKey: ["titular"], queryFn: fetchTitular, staleTime: Infinity });
   const rateQ = useQuery({ queryKey: ["rate", ym.y, ym.m], queryFn: () => fetchRate(ym.y, ym.m) });
+  // Local de trabalho em vigor, para constar na ficha impressa.
+  const localQ = useQuery({ queryKey: ["workplace"], queryFn: fetchWorkplace, staleTime: 300_000 });
   const valorHora = scope === "mes" ? (rateQ.data ?? null) : null;
   const report = buildMonth(ym.y, ym.m, q.data ?? [], now);
   const todayKey = dayKey(now);
@@ -51,8 +56,16 @@ function History() {
   };
   const years = Array.from({ length: 8 }, (_, i) => t.y - 6 + i);
   const sel = "rounded-xl border-2 border-input bg-card px-3 py-4 text-2xl font-bold";
-  // Only the week containing today starts expanded, so the screen stays short.
+  // Só a semana de hoje aparece: a tela cabe inteira, sem rolar. As setas
+  // trocam de semana, e "picked" guarda a escolha do usuário (null = a de hoje).
   const currentWeek = report.weeks.findIndex((w) => w.days.some((d) => d.key === todayKey));
+  const [picked, setPicked] = useState<number | null>(null);
+  const weekIdx = useMemo(() => {
+    if (picked !== null && picked >= 0 && picked < report.weeks.length) return picked;
+    return currentWeek >= 0 ? currentWeek : 0;
+  }, [picked, currentWeek, report.weeks.length]);
+  // Ao trocar de mês a escolha anterior não vale mais.
+  useEffect(() => setPicked(null), [ym.y, ym.m]);
 
   // Para a ficha: no mes, as sessoes do mes; em "tudo", a linha completa.
   const fichaSessions = useMemo(() => {
@@ -158,15 +171,45 @@ function History() {
               </p>
             </section>
           ) : (
-            <section className="space-y-4">
-              <h2 className="text-2xl font-extrabold">Semana por semana</h2>
-              <p className="flex items-start gap-2 text-base text-muted-foreground">
-                <Info className="mt-1 h-5 w-5 shrink-0" /> Toque em uma semana para abrir. O total do dia fica na última
-                coluna.
-              </p>
-              {report.weeks.map((w, i) => (
-                <WeekTable key={i} index={i} week={w} defaultOpen={i === currentWeek || currentWeek === -1} />
-              ))}
+            <section className="space-y-3">
+              <h2 className="text-2xl font-extrabold">Semana</h2>
+              {/* Uma semana por vez: a tela inteira cabe sem rolar. As setas
+                  trocam de semana e o total do mes fica logo acima. */}
+              <div className="flex items-center gap-2">
+                <button
+                  aria-label="Semana anterior"
+                  onClick={() => setPicked(Math.max(0, weekIdx - 1))}
+                  disabled={weekIdx === 0}
+                  className="rounded-2xl bg-secondary p-3 disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-8 w-8" />
+                </button>
+                <div className="flex-1 rounded-2xl bg-secondary px-4 py-3 text-center">
+                  <div className="font-display text-xl font-bold">
+                    Semana {weekIdx + 1} de {report.weeks.length}
+                  </div>
+                  <div className="text-base text-muted-foreground">
+                    {weekRangeLabel(report.weeks[weekIdx])} · {formatDuration(report.weeks[weekIdx]?.seconds ?? 0)}
+                  </div>
+                </div>
+                <button
+                  aria-label="Próxima semana"
+                  onClick={() => setPicked(Math.min(report.weeks.length - 1, weekIdx + 1))}
+                  disabled={weekIdx >= report.weeks.length - 1}
+                  className="rounded-2xl bg-secondary p-3 disabled:opacity-40"
+                >
+                  <ChevronRight className="h-8 w-8" />
+                </button>
+              </div>
+              {currentWeek >= 0 && weekIdx !== currentWeek && (
+                <button
+                  onClick={() => setPicked(currentWeek)}
+                  className="min-h-14 w-full rounded-2xl bg-accent px-4 text-base font-bold text-accent-foreground"
+                >
+                  Voltar para esta semana
+                </button>
+              )}
+              {report.weeks[weekIdx] && <WeekTable week={report.weeks[weekIdx]!} />}
             </section>
           )}
         </>
@@ -189,6 +232,7 @@ function History() {
         diasTrabalhados={fichaDias}
         nome={titularQ.data?.nome ?? ""}
         cpf={titularQ.data?.cpf ?? ""}
+        localTrabalho={localQ.data?.endereco ?? null}
       />
 
       <FixDialog session={fixing} onClose={() => setFixing(null)} />
@@ -301,23 +345,19 @@ function FullPeriod({
   );
 }
 
-function WeekTable({
-  week,
-  index,
-  defaultOpen,
-}: {
-  week: ReturnType<typeof buildMonth>["weeks"][number];
-  index: number;
-  defaultOpen: boolean;
-}) {
+/** "26/10 a 01/11" para o cabeçalho da semana. */
+function weekRangeLabel(week: ReturnType<typeof buildMonth>["weeks"][number] | undefined): string {
+  const days = week?.days ?? [];
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (!first || !last) return "";
+  const d = (x: { day: number; key: string }) => `${String(x.day).padStart(2, "0")}/${x.key.slice(5, 7)}`;
+  return `${d(first)} a ${d(last)}`;
+}
+
+function WeekTable({ week }: { week: ReturnType<typeof buildMonth>["weeks"][number] }) {
   return (
-    // Native <details>: opens by tap, works without JavaScript, and screen
-    // readers announce the collapsed/expanded state on their own.
-    <details open={defaultOpen} className="overflow-hidden rounded-3xl bg-card shadow-soft">
-      <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-3 bg-secondary px-5 py-4">
-        <span className="font-display text-xl font-bold">Semana {index + 1}</span>
-        <span className="font-display text-xl font-extrabold text-primary">{formatDuration(week.seconds)}</span>
-      </summary>
+    <div className="overflow-hidden rounded-3xl bg-card shadow-soft">
       <table className="w-full text-left text-base tabular-nums">
         <thead className="bg-secondary text-sm uppercase text-muted-foreground">
           <tr>
@@ -386,7 +426,7 @@ function WeekTable({
           </tr>
         </tfoot>
       </table>
-    </details>
+    </div>
   );
 }
 

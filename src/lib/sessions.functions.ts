@@ -113,3 +113,93 @@ export const saveMonthRate = createServerFn({ method: "POST" })
     const { upsertMonthRate } = await import("./sessions.server");
     await upsertMonthRate(data);
   });
+
+const devicePattern = /^[A-Za-z0-9-]{16,64}$/;
+
+/**
+ * Este aparelho ja esta liberado? A resposta tambem diz quantos existem, para a
+ * tela saber se precisa pedir a senha (aparelho novo) ou nao.
+ */
+export const checkDevice = createServerFn({ method: "POST" })
+  .validator((data: { device: string }) => {
+    if (typeof data?.device !== "string" || !devicePattern.test(data.device)) {
+      throw new Error("Aparelho inválido.");
+    }
+    return { device: data.device };
+  })
+  .handler(async ({ data }) => {
+    const { checkDevice: run } = await import("./sessions.server");
+    return run(data.device);
+  });
+
+/**
+ * Libera um aparelho novo. Exige a mesma senha de 6 numeros usada para bater o
+ * ponto; o primeiro aparelho entra sozinho, senao nao haveria como comecar.
+ * Por isso a senha vazia e aceita aqui: o banco so a dispensa quando a lista
+ * ainda esta vazia — em qualquer outro caso, senha vazia nao libera nada.
+ */
+export const authorizeDevice = createServerFn({ method: "POST" })
+  .validator((data: { device: string; pin: string }) => {
+    if (typeof data?.device !== "string" || !devicePattern.test(data.device)) {
+      throw new Error("Aparelho inválido.");
+    }
+    const pin = typeof data?.pin === "string" ? data.pin : "";
+    if (pin !== "" && !/^[0-9]{6}$/.test(pin)) {
+      throw new Error("A senha tem 6 números.");
+    }
+    return { device: data.device, pin };
+  })
+  .handler(async ({ data }) => {
+    const { authorizeDevice: run } = await import("./sessions.server");
+    return run(data.device, data.pin);
+  });
+
+/** Local de trabalho em uso agora (a empresa onde ele esta). */
+export const getWorkplace = createServerFn({ method: "GET" }).handler(async () => {
+  const { selectWorkplace } = await import("./sessions.server");
+  return selectWorkplace();
+});
+
+/** Troca o local de trabalho. Exige motivo e deixa rastro em workplace_audit. */
+export const changeWorkplace = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      nome: string;
+      endereco: string;
+      reason: string;
+      lat?: number | null;
+      lng?: number | null;
+      raioMetros?: number | null;
+    }) => {
+      if (typeof data?.endereco !== "string" || data.endereco.trim().length < 5) {
+        throw new Error("Informe o endereço do local de trabalho.");
+      }
+      if (typeof data?.reason !== "string" || data.reason.trim().length < 3) {
+        throw new Error("Informe o motivo da troca de local.");
+      }
+      // Coordenada e opcional, mas so entra em par valido: meia coordenada nao
+      // serve para medir distancia.
+      const { lat, lng } = geoFields(data ?? {});
+      const temCoordenada = lat !== null && lng !== null;
+      const raio = Number(data?.raioMetros);
+      const raioMetros = Number.isFinite(raio) ? Math.min(5000, Math.max(30, Math.round(raio))) : 300;
+      return {
+        nome: typeof data.nome === "string" ? data.nome.trim().slice(0, 120) : "",
+        endereco: data.endereco.trim().slice(0, 200),
+        reason: data.reason.trim().slice(0, 300),
+        lat: temCoordenada ? lat : null,
+        lng: temCoordenada ? lng : null,
+        raioMetros,
+      };
+    },
+  )
+  .handler(async ({ data }) => {
+    const { setWorkplace } = await import("./sessions.server");
+    await setWorkplace(data.nome, data.endereco, data.reason, data.lat, data.lng, data.raioMetros);
+  });
+
+/** Histórico das trocas de local, para conferência. */
+export const getWorkplaceHistory = createServerFn({ method: "GET" }).handler(async () => {
+  const { selectWorkplaceHistory } = await import("./sessions.server");
+  return selectWorkplaceHistory();
+});

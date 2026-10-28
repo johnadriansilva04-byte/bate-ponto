@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Delete, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PIN_LENGTH, pinMessage, type PinResult } from "@/lib/pin";
@@ -6,10 +6,22 @@ import { verifyPin } from "@/lib/sessions-api";
 
 type Props = {
   open: boolean;
-  /** "iniciar" / "finalizar": muda so o texto, o teclado e o mesmo. */
-  action: "iniciar" | "finalizar";
+  /** "iniciar" / "finalizar" / "liberar": muda so o texto, o teclado e o mesmo. */
+  action: "iniciar" | "finalizar" | "liberar";
   onCancel: () => void;
   onOk: () => void;
+  /**
+   * Como conferir a senha. Por padrao, a senha de bater ponto. A tela de
+   * aparelho novo passa a propria conferencia, porque ali a senha libera o
+   * aparelho em vez de registrar um toque.
+   */
+  verify?: (pin: string) => Promise<PinResult>;
+};
+
+const TITULO: Record<Props["action"], string> = {
+  iniciar: "Vai começar a trabalhar?",
+  finalizar: "Vai terminar de trabalhar?",
+  liberar: "Liberar este aparelho?",
 };
 
 /**
@@ -20,15 +32,26 @@ type Props = {
  * A conferencia e feita no servidor: se a internet cair, avisa e nao deixa
  * passar, em vez de aceitar qualquer coisa so para nao travar.
  */
-export function PinPad({ open, action, onCancel, onOk }: Props) {
+export function PinPad({ open, action, onCancel, onOk, verify }: Props) {
   const [pin, setPin] = useState("");
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<PinResult | null>(null);
+  // Espelho do pin em ref: toques rapidos seguidos leem o valor atual em vez do
+  // estado do render anterior, que ainda nao foi atualizado, e nao perdem digito.
+  const pinRef = useRef("");
+  // Mesma razao: impede um novo toque enquanto a senha esta sendo conferida.
+  const busyRef = useRef(false);
+
+  const setDigits = (value: string) => {
+    pinRef.current = value;
+    setPin(value);
+  };
 
   useEffect(() => {
     if (open) {
-      setPin("");
+      setDigits("");
       setError(null);
+      busyRef.current = false;
       setChecking(false);
     }
   }, [open]);
@@ -37,26 +60,29 @@ export function PinPad({ open, action, onCancel, onOk }: Props) {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (/^\d$/.test(e.key)) void push(e.key);
-      else if (e.key === "Backspace") setPin((p) => p.slice(0, -1));
+      else if (e.key === "Backspace") setDigits(pinRef.current.slice(0, -1));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
   async function push(d: string) {
-    if (checking) return;
-    const next = (pin + d).slice(0, PIN_LENGTH);
-    setPin(next);
+    if (busyRef.current) return;
+    const next = (pinRef.current + d).slice(0, PIN_LENGTH);
+    setDigits(next);
     setError(null);
     if (next.length < PIN_LENGTH) return;
 
+    busyRef.current = true;
     setChecking(true);
-    const result = await verifyPin(next);
+    const check = verify ?? verifyPin;
+    const result = await check(next);
+    busyRef.current = false;
     setChecking(false);
     if (result.ok) onOk();
     else {
       setError(result);
-      setPin("");
+      setDigits("");
       if (navigator.vibrate) navigator.vibrate(200);
     }
   }
@@ -68,7 +94,7 @@ export function PinPad({ open, action, onCancel, onOk }: Props) {
       <DialogContent className="max-w-md gap-5 border-2 border-primary bg-card">
         <DialogHeader>
           <DialogTitle className="text-center text-3xl font-extrabold">
-            {action === "iniciar" ? "Vai começar a trabalhar?" : "Vai terminar de trabalhar?"}
+            {TITULO[action]}
           </DialogTitle>
           <DialogDescription className="text-center text-xl font-bold text-foreground">
             Digite a sua senha de 6 números.

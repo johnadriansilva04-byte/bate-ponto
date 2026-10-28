@@ -72,30 +72,58 @@
    * Dark, high-contrast theme. A person with monocular low vision reads a light
    * background as glare, so the surfaces are near-black and text is near-white
    * with a large, bold face. Contrast ratios here exceed WCAG AAA for body text.
+   *
+   * Cada cor vem em duas linhas: hexadecimais primeiro, oklch depois. Navegador
+   * antigo (como o do J5) nao entende oklch e usa o hexadecimal; navegador novo
+   * usa a ultima declaracao valida, que e o oklch. Sem isso a tela ficaria sem
+   * cor nenhuma no aparelho antigo.
    */
+  --background: #0b110e;
   --background: oklch(0.17 0.012 165);
+  --foreground: #f6f5f1;
   --foreground: oklch(0.97 0.005 100);
+  --card: #19211e;
   --card: oklch(0.24 0.014 165);
+  --card-foreground: #f6f5f1;
   --card-foreground: oklch(0.97 0.005 100);
+  --popover: #19211e;
   --popover: oklch(0.24 0.014 165);
+  --popover-foreground: #f6f5f1;
   --popover-foreground: oklch(0.97 0.005 100);
+  --primary: #7cdf81;
   --primary: oklch(0.82 0.16 145);
+  --primary-foreground: #09140f;
   --primary-foreground: oklch(0.18 0.02 165);
+  --secondary: #27302c;
   --secondary: oklch(0.3 0.016 165);
+  --secondary-foreground: #f6f5f1;
   --secondary-foreground: oklch(0.97 0.005 100);
+  --muted: #27302c;
   --muted: oklch(0.3 0.016 165);
+  --muted-foreground: #bec6c2;
   --muted-foreground: oklch(0.82 0.01 165);
+  --accent: #264531;
   --accent: oklch(0.36 0.05 155);
+  --accent-foreground: #f6f5f1;
   --accent-foreground: oklch(0.97 0.005 100);
+  --destructive: #f75f4c;
   --destructive: oklch(0.68 0.19 30);
+  --destructive-foreground: #150a08;
   --destructive-foreground: oklch(0.16 0.02 30);
+  --warning: #fdbe45;
   --warning: oklch(0.84 0.15 80);
+  --warning-foreground: #1f1306;
   --warning-foreground: oklch(0.2 0.03 70);
+  --border: #43514a;
   --border: oklch(0.42 0.02 165);
+  --input: #596760;
   --input: oklch(0.5 0.02 165);
+  --ring: #7cdf81;
   --ring: oklch(0.82 0.16 145);
-  --shadow-soft: 0 10px 30px -12px oklch(0 0 0 / 0.6);
+  --shadow-soft: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  --shadow-button: 0 8px 0 0 #47944c;
   --shadow-button: 0 8px 0 0 oklch(0.6 0.13 145);
+  --shadow-button-stop: 0 8px 0 0 #a52b1e;
   --shadow-button-stop: 0 8px 0 0 oklch(0.48 0.16 30);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);

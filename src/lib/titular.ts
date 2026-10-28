@@ -12,3 +12,14 @@ export const TITULAR = {
 
 /** CPF so com digitos, como entra no hash. */
 export const cpfDigitos = TITULAR.cpf.replace(/\D/g, "");
+
+/**
+ * Primeiro nome, para o aplicativo falar com ele pelo nome. "JOÃO DE JESUS DO
+ * ROSÁRIO" vira "João". Conectivos (DE, DA, DOS...) nunca viram o nome.
+ */
+export function primeiroNome(): string {
+  const ignorar = new Set(["DE", "DA", "DO", "DAS", "DOS", "E"]);
+  const partes = TITULAR.nome.trim().split(/\s+/).filter((p) => !ignorar.has(p.toUpperCase()));
+  const escolhido = partes[0] ?? TITULAR.nome;
+  return escolhido.charAt(0).toUpperCase() + escolhido.slice(1).toLowerCase();
+}
