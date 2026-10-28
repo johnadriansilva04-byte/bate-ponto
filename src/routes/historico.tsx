@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, AlertTriangle, CalendarX, WifiOff, RefreshCw
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { FichaPonto } from "@/components/FichaPonto";
+import { ProvaIntegridade } from "@/components/ProvaIntegridade";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   endSession, fetchAllRates, fetchAllSessions, fetchMonth, fetchRate, fetchTitular, fetchWorkplace, fixSession,
@@ -214,6 +215,9 @@ function History() {
           )}
         </>
       )}
+
+      {/* Conferencia de integridade: codigo que o usuario pode fotografar. */}
+      {scope === "mes" && <ProvaIntegridade />}
 
       {/* Impressao: vale para o mes escolhido ou para o periodo completo. */}
       <PrintBar

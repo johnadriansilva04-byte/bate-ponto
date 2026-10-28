@@ -3,6 +3,7 @@ import { fmtDate, fmtTime, formatBRL, formatDuration, sessionSeconds, type Sessi
 import { formatCoords, geoLabel } from "@/lib/geo";
 import { TITULAR } from "@/lib/titular";
 import { BUILD } from "@/lib/version";
+import { MARCO_ATUAL } from "@/lib/integridade";
 
 export type FichaPeriodo = { rotulo: string; de: string | null; ate: string | null };
 
@@ -138,6 +139,12 @@ export function FichaPonto({ sessions, periodo, valorHora, totalSeconds, diasTra
           Cada linha desta ficha traz um código de integridade SHA-256 calculado no servidor sobre os horários e as
           coordenadas do respectivo registro. Qualquer alteração posterior no conteúdo muda o código, o que permite
           verificar a autenticidade do documento.
+        </p>
+        <p>
+          <strong>Declaração de integridade:</strong> em {MARCO_ATUAL.declaradoEm}, a estrutura do banco de dados foi
+          conferida e congelada com a impressão digital {MARCO_ATUAL.impressaoEsquema} (marco nº {MARCO_ATUAL.ancoraId}).
+          O Supabase mantém um registro próprio de toda alteração feita no banco, com data e hora, que pode ser
+          consultado no painel do projeto.
         </p>
       </section>
 

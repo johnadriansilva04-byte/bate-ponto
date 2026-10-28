@@ -38,6 +38,36 @@ export type Database = {
         }
         Relationships: []
       }
+      integrity_anchors: {
+        Row: {
+          criado_em: string
+          id: number
+          impressao_esquema: string
+          installation_id: string
+          nota: string | null
+          sessoes: number
+          topo_corrente: string | null
+        }
+        Insert: {
+          criado_em?: string
+          id?: number
+          impressao_esquema: string
+          installation_id?: string
+          nota?: string | null
+          sessoes?: number
+          topo_corrente?: string | null
+        }
+        Update: {
+          criado_em?: string
+          id?: number
+          impressao_esquema?: string
+          installation_id?: string
+          nota?: string | null
+          sessoes?: number
+          topo_corrente?: string | null
+        }
+        Relationships: []
+      }
       monthly_rates: {
         Row: {
           closed_at: string | null
@@ -392,6 +422,20 @@ export type Database = {
           p_raio?: number
           p_reason: string
         }
+        Returns: string
+      }
+      integrity_state: {
+        Args: never
+        Returns: {
+          impressao_esquema: string
+          sessoes: number
+          topo_corrente: string | null
+          ultimo_marco_em: string | null
+          ultimo_marco_impressao: string | null
+        }[]
+      }
+      schema_fingerprint: {
+        Args: never
         Returns: string
       }
       workplace_current: {

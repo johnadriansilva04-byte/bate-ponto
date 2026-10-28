@@ -31,6 +31,15 @@ export const getAllRates = createServerFn({ method: "GET" }).handler(async () =>
 });
 
 /**
+ * Estado de integridade do banco: impressao digital do schema e ultimo marco.
+ * Nao exige senha: serve para conferencia, nao para escrever nada.
+ */
+export const getIntegrityState = createServerFn({ method: "GET" }).handler(async () => {
+  const { selectIntegrityState } = await import("./sessions.server");
+  return selectIntegrityState();
+});
+
+/**
  * Confere a senha de confirmacao no servidor. O aplicativo nunca ve o hash, e a
  * funcao do banco ainda bloqueia por 5 minutos depois de 5 erros seguidos.
  */

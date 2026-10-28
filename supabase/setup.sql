@@ -1175,3 +1175,105 @@ GRANT EXECUTE ON FUNCTION public.set_workplace(text, text, text, double precisio
 REVOKE ALL ON FUNCTION public.workplace_current() FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.workplace_current() TO service_role;
+
+-- ============================================================================
+-- 0008: prova de integridade — impressao digital do schema e marcos datados.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.schema_fingerprint()
+RETURNS text LANGUAGE sql STABLE SET search_path = public, pg_catalog AS $$
+  SELECT encode(extensions.digest(string_agg(linha, E'\n' ORDER BY linha), 'sha256'), 'hex')
+  FROM (
+    SELECT 'TABLE ' || table_name || '.' || column_name || ':' || data_type || ':' ||
+           is_nullable || ':' || COALESCE(column_default, '-') AS linha
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+    UNION ALL
+    SELECT 'FUNC ' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')->' ||
+           COALESCE(pg_get_function_result(p.oid), '-') || ':' ||
+           md5(regexp_replace(regexp_replace(pg_get_functiondef(p.oid), '--[^\n]*', '', 'g'), '\s+', ' ', 'g'))
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public'
+    UNION ALL
+    SELECT 'VIEW ' || c.relname || ':' ||
+           md5(regexp_replace(regexp_replace(pg_get_viewdef(c.oid), '--[^\n]*', '', 'g'), '\s+', ' ', 'g'))
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND c.relkind = 'v'
+    UNION ALL
+    SELECT 'TRIG ' || c.relname || '.' || t.tgname || ':' || pr.proname
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_proc pr ON pr.oid = t.tgfoid
+     WHERE n.nspname = 'public' AND NOT t.tgisinternal
+    UNION ALL
+    SELECT 'INDEX ' || indexname || ':' || indexdef
+      FROM pg_indexes
+     WHERE schemaname = 'public'
+    UNION ALL
+    SELECT 'POLICY ' || tablename || '.' || policyname || ':' || cmd
+      FROM pg_policies
+     WHERE schemaname = 'public'
+  ) x;
+$$;
+
+CREATE TABLE IF NOT EXISTS public.integrity_anchors (
+  id bigserial PRIMARY KEY,
+  installation_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+  impressao_esquema text NOT NULL,
+  topo_corrente text,
+  sessoes integer NOT NULL DEFAULT 0,
+  nota text,
+  criado_em timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.integrity_anchors ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.integrity_anchors FROM anon, authenticated;
+
+GRANT ALL ON public.integrity_anchors TO service_role;
+
+GRANT USAGE, SELECT ON SEQUENCE public.integrity_anchors_id_seq TO service_role;
+
+CREATE OR REPLACE FUNCTION public.anchor_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  RAISE EXCEPTION 'Marco de integridade e somente-leitura. Registre um novo marco em vez de alterar.';
+END $$;
+
+DROP TRIGGER IF EXISTS ia_guard ON public.integrity_anchors;
+
+CREATE TRIGGER ia_guard
+  BEFORE UPDATE OR DELETE ON public.integrity_anchors
+  FOR EACH ROW EXECUTE FUNCTION public.anchor_guard();
+
+DROP FUNCTION IF EXISTS public.integrity_state();
+
+CREATE OR REPLACE FUNCTION public.integrity_state()
+RETURNS TABLE (
+  impressao_esquema text,
+  topo_corrente text,
+  sessoes integer,
+  ultimo_marco_em timestamptz,
+  ultimo_marco_impressao text
+) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT
+    public.schema_fingerprint(),
+    (SELECT w.session_hash FROM public.work_sessions w
+      WHERE w.installation_id = '00000000-0000-0000-0000-000000000001'::uuid
+        AND w.session_hash IS NOT NULL
+      ORDER BY w.started_at DESC, w.id DESC LIMIT 1),
+    (SELECT count(*)::integer FROM public.work_sessions w
+      WHERE w.installation_id = '00000000-0000-0000-0000-000000000001'::uuid),
+    (SELECT a.criado_em FROM public.integrity_anchors a ORDER BY a.criado_em DESC LIMIT 1),
+    (SELECT a.impressao_esquema FROM public.integrity_anchors a ORDER BY a.criado_em DESC LIMIT 1);
+$$;
+
+REVOKE ALL ON FUNCTION public.schema_fingerprint() FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.schema_fingerprint() TO service_role;
+
+REVOKE ALL ON FUNCTION public.integrity_state() FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.integrity_state() TO service_role;

@@ -11,6 +11,7 @@ import {
   endWork,
   getAllRates,
   getAllSessions,
+  getIntegrityState,
   getMonthRate,
   getOpenSession,
   getSessionsBetween,
@@ -132,6 +133,9 @@ export const saveWorkplace = (
 
 /** Histórico das trocas de local. */
 export const fetchWorkplaceHistory = () => getWorkplaceHistory();
+
+/** Estado de integridade do banco, para a tela de conferência. */
+export const fetchIntegrityState = () => getIntegrityState();
 
 /** "2026-05-05T17:30" in São Paulo local time -> ISO UTC */
 export function localInputToIso(v: string): string {

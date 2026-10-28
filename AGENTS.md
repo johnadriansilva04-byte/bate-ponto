@@ -23,3 +23,18 @@
 - Changing the workplace never rewrites history, and this is what makes the seal meaningful: `ws_seal()` **copies** `nome — endereco` into `work_sessions.workplace_label` when the session closes, and that text is part of the SHA-256 payload. So an old timesheet keeps the address where the work actually happened, and its hash does not move when the workplace changes. `COALESCE(OLD.workplace_label, …)` in `ws_seal()` is what freezes it — dropping that COALESCE would silently re-stamp every old row's label on the next update and break the chain. Editing a sealed row is refused by `ws_guard_sealed()`; the only way through is `correct_session_end()`, which nulls the label so the seal is recomputed.
 - The offline outbox (`src/lib/outbox.ts`) keeps the tap instant and the GPS reading of each punch, so a queued event syncs with the time the user saw, never the sync time.
 - After touching the schema, re-run `npx tsc --noEmit && npx vitest run && npm run build`; the typecheck is the gate that catches stale Supabase types.
+
+## Prova de integridade (marco datado) — migration 0008
+
+O lacre por sessão tem um limite conhecido: quem tem a chave do banco pode reescrever os dados **e** recalcular a corrente inteira, e o lacre interno passa a dizer "tudo certo". Isso foi verificado empiricamente — um teste alterou uma sessão de 1h para 9h, recalculou a cadeia, e `session_hash_valid` respondeu `true`. O lacre sozinho não prova nada contra quem controla o banco.
+
+A migration 0008 fecha essa lacuna em duas camadas:
+
+1. `public.schema_fingerprint()` — SHA-256 determinístico de **toda** a estrutura do schema `public`: colunas, funções (com `md5(pg_get_functiondef())`, ou seja, o **corpo**, não só a assinatura), views, triggers, índices e policies. Antes do hash, comentários (`--…`) e espaços em branco são normalizados com `regexp_replace`. Essa normalização é obrigatória: sem ela, reexecutar `supabase/setup.sql` (que precisa ser idempotente) mudava a impressão só por diferença de formatação entre o arquivo e a migração. Foi um bug real, encontrado ao rodar o `setup.sql` duas vezes.
+2. `public.integrity_anchors` — tabela **somente-inserção** (trigger `anchor_guard()` recusa UPDATE e DELETE) que grava a impressão esperada, o topo da corrente e a data. Marcos nunca se editam: registra-se um novo.
+
+O que isso prova: a estrutura do banco não mudou desde a data declarada. Testado e detectado — troca de corpo de função, `DROP TRIGGER`, coluna nova e policy nova. O que **não** prova: que alguém com a chave não reescreveu tudo e criou um marco novo. Nesse caso a prova é externa — o Supabase registra todo DDL com data e usuário (`log_statement = 'ddl'`), e esse log é mantido pela plataforma, fora do banco.
+
+Detalhe operacional descoberto: `log_statement` não pode ser mudado no nível do banco (`permission denied`), mas **pode** no nível do role (`ALTER ROLE postgres SET log_statement = 'all'`). Com `all`, até DML puro (INSERT/UPDATE/DELETE) entra no log — confirmado com um marcador `CANARIO_LOG_ALL` que apareceu no log em segundos. Hoje está em `ddl` (padrão do Supabase). O log tem retenção de ~24h, então serve para auditoria recente, não histórica. Backups automáticos exigem plano Enterprise (a API devolve 402), por isso `backups: []`.
+
+A declaração legível fica em `src/lib/integridade.ts` (`MARCOS`), a comparação pura em `src/lib/conferencia.ts` (testada), e a tela em `src/components/ProvaIntegridade.tsx` (aba HISTÓRICO, junto com a ficha impressa). Para declarar uma mudança de estrutura: calcule `select public.schema_fingerprint()`, insira um marco novo em `integrity_anchors` e acrescente o objeto correspondente a `MARCOS`.

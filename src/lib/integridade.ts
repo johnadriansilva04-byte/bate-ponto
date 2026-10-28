@@ -1,0 +1,103 @@
+// ============================================================================
+// DECLARACAO DE INTEGRIDADE — leia antes de alterar qualquer coisa.
+//
+// Este arquivo e o "recado" datado do projeto: registra quando esta versao foi
+// lancada, qual impressao digital o banco tinha, e onde ficam as provas
+// externas que sustentam a afirmacao. Ele NAO e um mecanismo de seguranca —
+// e um registro de conferencia. A protecao real esta no banco (migration
+// 0008) e nos logs do Supabase.
+//
+// ---------------------------------------------------------------------------
+// O QUE FOI DECLARADO
+// ---------------------------------------------------------------------------
+// Em 28/10/2026, a estrutura do banco foi conferida e congelada. A partir
+// dessa data, qualquer alteracao de estrutura (nova coluna, funcao trocada,
+// trigger removido, indice criado) faz `public.schema_fingerprint()` devolver
+// um valor diferente do que esta aqui. A conferencia e feita pela tela e pela
+// ficha de ponto; nada trava o aplicativo por causa disso.
+//
+// ---------------------------------------------------------------------------
+// COMO CONFERIR (qualquer pessoa, sem pedir permissao)
+// ---------------------------------------------------------------------------
+//   1. Rode no banco:      select public.schema_fingerprint();
+//      Compare com MARCO_ZERO.impressaoEsquema abaixo. Se for igual, a
+//      estrutura esta exatamente como foi lancada.
+//   2. Rode:               select * from public.integrity_state();
+//      Traz a impressao atual, o topo da corrente de lacres e o ultimo marco.
+//   3. Confira os logs:    Supabase → Logs → Postgres.
+//      O Supabase registra TODO comando DDL executado, com data e usuario
+//      (log_statement = 'ddl'). A aplicacao da migration 0008 aparece la, com
+//      a hora exata. Nenhum ALTER posterior pode ser escondido desse log.
+//
+// ---------------------------------------------------------------------------
+// O QUE ESTA PROVA GARANTE — E O QUE NAO GARANTE
+// ---------------------------------------------------------------------------
+// GARANTE: que a estrutura do banco nao mudou desde a data declarada. Se
+// alguem trocar o corpo de ws_hash ou remover o trigger ws_01_guard, a
+// impressao muda e a diferenca aparece. Tambem garante que o lacre de cada
+// sessao continua batendo com a cadeia (session_hash_valid).
+//
+// NAO GARANTE: que alguem com a chave do banco nao tenha reescrito os dados E
+// criado um marco novo. Isso e impossivel de impedir por software — quem
+// controla o banco controla os hashes. O que essa pessoa NAO consegue apagar e
+// o log de DDL do Supabase, que e mantido pela plataforma, fora do banco.
+// Comparar o marco com esse log e a prova de verdade.
+//
+// Esta limitacao foi verificada empiricamente: nesta mesma data, um teste
+// reescreveu uma sessao antiga, recalculou a corrente inteira, e o lacre
+// interno respondeu "tudo certo". So a comparacao com um valor guardado FORA
+// do banco revelou a alteracao.
+// ============================================================================
+
+export type MarcoIntegridade = {
+  /** Data do lancamento, no fuso de Sao Paulo (DD/MM/AAAA HH:mm). */
+  declaradoEm: string;
+  /** Instante UTC exato, para conferir com o log do Supabase. */
+  declaradoEmUtc: string;
+  /** Versao do aplicativo no momento da declaracao. */
+  versao: string;
+  /** Impressao digital do schema public, calculada por public.schema_fingerprint(). */
+  impressaoEsquema: string;
+  /** Id do marco gravado em public.integrity_anchors (somente-insercao). */
+  ancoraId: number;
+  /** De onde vem a prova externa, independente do banco. */
+  prova: string;
+};
+
+/**
+ * Marco zero: a primeira declaracao. Nao se edita este valor — para declarar
+ * uma mudanca, acrescente um novo objeto ao array e registre um novo marco no
+ * banco com `insert into public.integrity_anchors ...`.
+ */
+export const MARCOS: readonly MarcoIntegridade[] = [
+  {
+    declaradoEm: "28/10/2026 04:35",
+    declaradoEmUtc: "2026-10-28T07:35:29Z",
+    versao: "1.0.0",
+    impressaoEsquema: "ca3f33dd9ac1f1fc94c53de6c24b1007c7026ad240b5a55f1e75a973d76e3e2c",
+    ancoraId: 1,
+    prova: "Supabase → Logs → Postgres (log_statement='ddl'), migration 0008 aplicada em 2026-10-28T07:35:29Z",
+  },
+  {
+    declaradoEm: "28/10/2026 04:38",
+    declaradoEmUtc: "2026-10-28T07:38:37Z",
+    versao: "1.0.0",
+    // Corrige o marco 1: a impressao cobria o corpo das funcoes sem normalizar
+    // espacos e comentarios, entao reexecutar o setup.sql (que deve ser
+    // idempotente) mudava o valor so por formatacao. Agora e estavel.
+    impressaoEsquema: "a96febd225347ede407261927ca727070286a26e5260963ccb53a7361620203f",
+    ancoraId: 2,
+    prova: "Supabase → Logs → Postgres (log_statement='ddl'), marco 2 gravado em 2026-10-28T07:38:37Z",
+  },
+];
+
+export const MARCO_ZERO: MarcoIntegridade = MARCOS[0]!;
+
+/** O marco em vigor: o ultimo declarado. */
+export const MARCO_ATUAL: MarcoIntegridade = MARCOS[MARCOS.length - 1]!;
+
+/** Texto curto para o rodape e a ficha de ponto. */
+export const marcoLabel = `Integridade conferida em ${MARCO_ATUAL.declaradoEm} (marco nº ${MARCO_ATUAL.ancoraId})`;
+
+/** Mostra so o comeco do codigo: o suficiente para conferir a olho. */
+export const impressaoCurta = (v: string) => `${v.slice(0, 16)}…`;

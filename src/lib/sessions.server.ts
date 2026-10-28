@@ -151,6 +151,29 @@ export async function checkHash(id: string): Promise<boolean> {
   return data === true;
 }
 
+/** Estado de integridade: impressao atual do schema e ultimo marco declarado. */
+export type EstadoIntegridade = {
+  impressaoEsquema: string;
+  topoCorrente: string | null;
+  sessoes: number;
+  ultimoMarcoEm: string | null;
+  ultimoMarcoImpressao: string | null;
+};
+
+export async function selectIntegrityState(): Promise<EstadoIntegridade | null> {
+  const { data, error } = await supabaseAdmin.rpc("integrity_state");
+  if (error) throw new Error(error.message);
+  const r = (data ?? [])[0];
+  if (!r) return null;
+  return {
+    impressaoEsquema: r.impressao_esquema,
+    topoCorrente: r.topo_corrente,
+    sessoes: r.sessoes,
+    ultimoMarcoEm: r.ultimo_marco_em,
+    ultimoMarcoImpressao: r.ultimo_marco_impressao,
+  };
+}
+
 /** Todos os fechamentos mensais, para somar o valor no periodo completo. */
 export async function selectAllRates(): Promise<{ year: number; month: number; hourlyRate: number | null }[]> {
   const { data, error } = await supabaseAdmin
