@@ -3,7 +3,7 @@
 // registros e a ficha de ponto.
 export const BUILD = {
   /** DD/MM/AAAA HH:mm no fuso de Sao Paulo. */
-  modificadoEm: "28/10/2026 05:18",
+  modificadoEm: "28/10/2026 07:15",
   versao: "1.0.0",
 } as const;
 

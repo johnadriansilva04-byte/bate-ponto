@@ -106,6 +106,19 @@ export const MARCOS: readonly MarcoIntegridade[] = [
     ancoraId: 3,
     prova: "Supabase → Logs → Postgres (log_statement='ddl'), marco 3 gravado em 2026-10-28T08:16:05Z, com a migration 0009 (declaracao de finalidade) aplicada no mesmo instante",
   },
+  {
+    declaradoEm: "28/10/2026 07:14",
+    declaradoEmUtc: "2026-10-28T10:14:17Z",
+    versao: "1.0.0",
+    // Este marco nao declara mudanca de estrutura: a impressao e IDENTICA a do
+    // marco 3, de proposito. Ele registra um teste que foi feito e desfeito no
+    // banco (ver a nota gravada em integrity_anchors, id 5), para que o
+    // historico mostre o que houve em vez de esconder. A impressao igual e a
+    // prova de que a estrutura nao mudou — so o registro do teste ficou.
+    impressaoEsquema: "6293e0a2a4e5245029441e4eaa78db8258b5e2ab8b4a0b95c707715824a4eaec",
+    ancoraId: 5,
+    prova: "Supabase → Logs → Postgres (log_statement='mod'), marco 4 gravado em 2026-10-28T10:14:17Z; o INSERT de teste (id 4, impressao deadbeef, nota TESTE-JOHN) aparece no mesmo log as 10:08:18Z, junto com o DISABLE/DELETE/ENABLE que o removeu as 10:08:58Z",
+  },
 ];
 
 export const MARCO_ZERO: MarcoIntegridade = MARCOS[0]!;
