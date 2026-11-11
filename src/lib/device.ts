@@ -5,6 +5,12 @@
 // que ficam no banco.
 
 const KEY = "meuponto.aparelho.v1";
+// Marca local de "este aparelho ja foi liberado pelo servidor". Serve para uma
+// coisa so: quando o servidor esta fora do ar, NAO trancar quem ja entrou. A
+// protecao real continua sendo a senha exigida a cada toque, conferida no
+// servidor. A marca vive no mesmo armazenamento do codigo do aparelho: limpar
+// os dados apaga as duas, e o aparelho volta a ser novo (pede a senha).
+const LIBERADO_KEY = "meuponto.liberado.v1";
 
 /** Codigo novo, aleatorio, no formato aceito pelo banco. */
 function novoCodigo(): string {
@@ -31,5 +37,26 @@ export function deviceId(): string {
   } catch {
     // Sem localStorage (modo restrito): codigo so desta sessao.
     return novoCodigo();
+  }
+}
+
+/** Grava que este aparelho ja foi liberado pelo servidor. */
+export function marcarLiberado(): void {
+  try {
+    localStorage.setItem(LIBERADO_KEY, deviceId());
+  } catch {
+    // Sem armazenamento: sem marca, e sem prejuizo — so nao ha o atalho offline.
+  }
+}
+
+/**
+ * Este aparelho ja foi liberado antes? A marca so vale para o MESMO codigo de
+ * aparelho: se os dados foram limpos, o codigo mudou e a marca nao confere.
+ */
+export function jaLiberado(): boolean {
+  try {
+    return localStorage.getItem(LIBERADO_KEY) === deviceId();
+  } catch {
+    return false;
   }
 }

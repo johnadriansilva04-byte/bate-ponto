@@ -67,6 +67,15 @@ export function geoLabel(status?: string | null): string {
   }
 }
 
+/**
+ * Igual a `geoLabel`, mas em branco quando o local foi registrado normalmente.
+ * Na lista do dia a dia, só o que foge do comum merece aparecer — escrever
+ * "Local registrado" em cada linha é ruído que esconde o que importa.
+ */
+export function geoAviso(status?: string | null): string {
+  return status === "ok" ? "" : geoLabel(status);
+}
+
 /** "‑23.5505, ‑46.6333" para a ficha impressa. */
 export function formatCoords(lat?: number | null, lng?: number | null): string {
   if (lat === null || lat === undefined || lng === null || lng === undefined) return "—";

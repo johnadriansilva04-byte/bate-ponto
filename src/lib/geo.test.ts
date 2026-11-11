@@ -3,6 +3,7 @@ import {
   avaliarLocal,
   decidirAviso,
   distanceMeters,
+  geoAviso,
   formatDistancia,
   type GeoFix,
   type GeoStatus,
@@ -128,5 +129,18 @@ describe("decidirAviso", () => {
       decidirAviso(fix(CASA.latitude + 0.01, CASA.longitude), local({ latitude: null }), false),
     ).toBeNull();
     expect(decidirAviso(fix(CASA.latitude + 0.01, CASA.longitude), null, false)).toBeNull();
+  });
+});
+
+describe("geoAviso", () => {
+  it("fica em branco quando o local foi registrado normalmente", () => {
+    expect(geoAviso("ok")).toBe("");
+  });
+
+  it("avisa so quando houve algo fora do comum", () => {
+    expect(geoAviso("negado")).toBe("Permissão de local negada");
+    expect(geoAviso("expirado")).toBe("Sem sinal de GPS na hora");
+    expect(geoAviso(null)).toBe("Local não registrado");
+    expect(geoAviso(undefined)).toBe("Local não registrado");
   });
 });

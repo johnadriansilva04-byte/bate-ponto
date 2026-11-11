@@ -3,8 +3,8 @@
 // registros e a ficha de ponto.
 export const BUILD = {
   /** DD/MM/AAAA HH:mm no fuso de Sao Paulo. */
-  modificadoEm: "28/10/2026 07:15",
-  versao: "1.0.0",
+  modificadoEm: "11/11/2026 15:20",
+  versao: "1.0.1",
 } as const;
 
 export const buildLabel = `Versão Exclusiva — Última Modificação: ${BUILD.modificadoEm}`;

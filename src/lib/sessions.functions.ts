@@ -3,31 +3,49 @@
 import { createServerFn } from "@tanstack/react-start";
 import { toMonthInput, toMonthRateInput, toRangeInput } from "./validation";
 
+/**
+ * Executa o corpo do handler registrando a falha real no log do servidor.
+ *
+ * Sem isto, uma falha de banco (Supabase fora do ar, chave ausente, projeto
+ * suspenso) chega ao navegador como um erro generico — e a tela, sem saber a
+ * causa, culpa a internet de quem usa. O `console.error` daqui aparece no log
+ * da Vercel (Deployments → Functions), que é onde a causa de verdade é lida.
+ */
+async function registrar<T>(nome: string, corpo: () => Promise<T>): Promise<T> {
+  try {
+    return await corpo();
+  } catch (erro) {
+    const detalhe = erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro);
+    console.error(`[serverFn ${nome}] falhou: ${detalhe}`, erro);
+    throw erro;
+  }
+}
+
 export const getOpenSession = createServerFn({ method: "GET" }).handler(async () => {
   const { selectOpenSession } = await import("./sessions.server");
-  return selectOpenSession();
+  return registrar("getOpenSession", () => selectOpenSession());
 });
 
 export const getSessionsBetween = createServerFn({ method: "GET" })
   .validator(toRangeInput)
   .handler(async ({ data }) => {
     const { selectSessionsBetween } = await import("./sessions.server");
-    return selectSessionsBetween(data.from, data.to);
+    return registrar("getSessionsBetween", () => selectSessionsBetween(data.from, data.to));
   });
 
 export const getAllSessions = createServerFn({ method: "GET" }).handler(async () => {
   const { selectAllSessions } = await import("./sessions.server");
-  return selectAllSessions();
+  return registrar("getAllSessions", () => selectAllSessions());
 });
 
 export const getTitular = createServerFn({ method: "GET" }).handler(async () => {
   const { selectTitular } = await import("./sessions.server");
-  return selectTitular();
+  return registrar("getTitular", () => selectTitular());
 });
 
 export const getAllRates = createServerFn({ method: "GET" }).handler(async () => {
   const { selectAllRates } = await import("./sessions.server");
-  return selectAllRates();
+  return registrar("getAllRates", () => selectAllRates());
 });
 
 /**
@@ -36,7 +54,7 @@ export const getAllRates = createServerFn({ method: "GET" }).handler(async () =>
  */
 export const getIntegrityState = createServerFn({ method: "GET" }).handler(async () => {
   const { selectIntegrityState } = await import("./sessions.server");
-  return selectIntegrityState();
+  return registrar("getIntegrityState", () => selectIntegrityState());
 });
 
 /**
@@ -52,7 +70,7 @@ export const checkPin = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const { verifyPin } = await import("./sessions.server");
-    return verifyPin(data.pin);
+    return registrar("checkPin", () => verifyPin(data.pin));
   });
 
 const geoFields = (d: { lat?: unknown; lng?: unknown; geoStatus?: unknown }) => {
@@ -65,7 +83,8 @@ const geoFields = (d: { lat?: unknown; lng?: unknown; geoStatus?: unknown }) => 
   };
   const lat = num(d.lat);
   const lng = num(d.lng);
-  const valid = lat !== null && lng !== null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  const valid =
+    lat !== null && lng !== null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
   return {
     lat: valid ? lat : null,
     lng: valid ? lng : null,
@@ -73,27 +92,52 @@ const geoFields = (d: { lat?: unknown; lng?: unknown; geoStatus?: unknown }) => 
   };
 };
 
-const isIso = (v: unknown): v is string => typeof v === "string" && !Number.isNaN(new Date(v).getTime());
+const isIso = (v: unknown): v is string =>
+  typeof v === "string" && !Number.isNaN(new Date(v).getTime());
 
 export const startWork = createServerFn({ method: "POST" })
-  .validator((data: { at?: string; lat?: number | null; lng?: number | null; geoStatus?: string | null } | undefined) => {
-    if (data?.at !== undefined && !isIso(data.at)) throw new Error("Horário inválido.");
-    return { at: data?.at, ...geoFields(data ?? {}) };
-  })
+  .validator(
+    (
+      data:
+        | { at?: string; lat?: number | null; lng?: number | null; geoStatus?: string | null }
+        | undefined,
+    ) => {
+      if (data?.at !== undefined && !isIso(data.at)) throw new Error("Horário inválido.");
+      return { at: data?.at, ...geoFields(data ?? {}) };
+    },
+  )
   .handler(async ({ data }) => {
     const { insertStart } = await import("./sessions.server");
-    return insertStart({ startedAt: data.at, lat: data.lat, lng: data.lng, geoStatus: data.geoStatus });
+    return registrar("startWork", () =>
+      insertStart({ startedAt: data.at, lat: data.lat, lng: data.lng, geoStatus: data.geoStatus }),
+    );
   });
 
 export const endWork = createServerFn({ method: "POST" })
-  .validator((data: { id: string; endedAt?: string; lat?: number | null; lng?: number | null; geoStatus?: string | null }) => {
-    if (!data?.id) throw new Error("Sessão inválida.");
-    if (data.endedAt !== undefined && !isIso(data.endedAt)) throw new Error("Horário inválido.");
-    return { id: data.id, endedAt: data.endedAt, ...geoFields(data) };
-  })
+  .validator(
+    (data: {
+      id: string;
+      endedAt?: string;
+      lat?: number | null;
+      lng?: number | null;
+      geoStatus?: string | null;
+    }) => {
+      if (!data?.id) throw new Error("Sessão inválida.");
+      if (data.endedAt !== undefined && !isIso(data.endedAt)) throw new Error("Horário inválido.");
+      return { id: data.id, endedAt: data.endedAt, ...geoFields(data) };
+    },
+  )
   .handler(async ({ data }) => {
     const { updateEnd } = await import("./sessions.server");
-    return updateEnd({ id: data.id, endedAt: data.endedAt, lat: data.lat, lng: data.lng, geoStatus: data.geoStatus });
+    return registrar("endWork", () =>
+      updateEnd({
+        id: data.id,
+        endedAt: data.endedAt,
+        lat: data.lat,
+        lng: data.lng,
+        geoStatus: data.geoStatus,
+      }),
+    );
   });
 
 /** Correcao com motivo: passa pela funcao do banco, que audita e recalcula o lacre. */
@@ -101,26 +145,27 @@ export const correctWork = createServerFn({ method: "POST" })
   .validator((data: { id: string; endedAt: string; reason: string }) => {
     if (!data?.id) throw new Error("Sessão inválida.");
     if (!isIso(data.endedAt)) throw new Error("Horário inválido.");
-    if (!data.reason || data.reason.trim().length < 3) throw new Error("Informe o motivo da correção.");
+    if (!data.reason || data.reason.trim().length < 3)
+      throw new Error("Informe o motivo da correção.");
     return { id: data.id, endedAt: data.endedAt, reason: data.reason.trim().slice(0, 300) };
   })
   .handler(async ({ data }) => {
     const { correctEnd } = await import("./sessions.server");
-    return correctEnd(data.id, data.endedAt, data.reason);
+    return registrar("correctWork", () => correctEnd(data.id, data.endedAt, data.reason));
   });
 
 export const getMonthRate = createServerFn({ method: "GET" })
   .validator(toMonthInput)
   .handler(async ({ data }) => {
     const { selectMonthRate } = await import("./sessions.server");
-    return selectMonthRate(data.year, data.month);
+    return registrar("getMonthRate", () => selectMonthRate(data.year, data.month));
   });
 
 export const saveMonthRate = createServerFn({ method: "POST" })
   .validator(toMonthRateInput)
   .handler(async ({ data }) => {
     const { upsertMonthRate } = await import("./sessions.server");
-    await upsertMonthRate(data);
+    await registrar("saveMonthRate", () => upsertMonthRate(data));
   });
 
 const devicePattern = /^[A-Za-z0-9-]{16,64}$/;
@@ -138,7 +183,7 @@ export const checkDevice = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const { checkDevice: run } = await import("./sessions.server");
-    return run(data.device);
+    return registrar("checkDevice", () => run(data.device));
   });
 
 /**
@@ -160,13 +205,13 @@ export const authorizeDevice = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const { authorizeDevice: run } = await import("./sessions.server");
-    return run(data.device, data.pin);
+    return registrar("authorizeDevice", () => run(data.device, data.pin));
   });
 
 /** Local de trabalho em uso agora (a empresa onde ele esta). */
 export const getWorkplace = createServerFn({ method: "GET" }).handler(async () => {
   const { selectWorkplace } = await import("./sessions.server");
-  return selectWorkplace();
+  return registrar("getWorkplace", () => selectWorkplace());
 });
 
 /** Troca o local de trabalho. Exige motivo e deixa rastro em workplace_audit. */
@@ -191,7 +236,9 @@ export const changeWorkplace = createServerFn({ method: "POST" })
       const { lat, lng } = geoFields(data ?? {});
       const temCoordenada = lat !== null && lng !== null;
       const raio = Number(data?.raioMetros);
-      const raioMetros = Number.isFinite(raio) ? Math.min(5000, Math.max(30, Math.round(raio))) : 300;
+      const raioMetros = Number.isFinite(raio)
+        ? Math.min(5000, Math.max(30, Math.round(raio)))
+        : 300;
       return {
         nome: typeof data.nome === "string" ? data.nome.trim().slice(0, 120) : "",
         endereco: data.endereco.trim().slice(0, 200),
@@ -204,11 +251,13 @@ export const changeWorkplace = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { setWorkplace } = await import("./sessions.server");
-    await setWorkplace(data.nome, data.endereco, data.reason, data.lat, data.lng, data.raioMetros);
+    await registrar("changeWorkplace", () =>
+      setWorkplace(data.nome, data.endereco, data.reason, data.lat, data.lng, data.raioMetros),
+    );
   });
 
 /** Histórico das trocas de local, para conferência. */
 export const getWorkplaceHistory = createServerFn({ method: "GET" }).handler(async () => {
   const { selectWorkplaceHistory } = await import("./sessions.server");
-  return selectWorkplaceHistory();
+  return registrar("getWorkplaceHistory", () => selectWorkplaceHistory());
 });

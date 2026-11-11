@@ -297,7 +297,8 @@ function Punch() {
 
       {broken && (
         <p className="flex items-center gap-2 rounded-2xl bg-warning px-4 py-3 text-lg font-bold text-warning-foreground">
-          <WifiOff className="h-6 w-6" /> Sem conexão. Você ainda pode bater o ponto.
+          <WifiOff className="h-6 w-6" /> Não deu para carregar os horários agora. Você ainda pode
+          bater o ponto.
         </p>
       )}
 

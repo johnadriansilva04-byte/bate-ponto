@@ -5,30 +5,48 @@
 // na propria instalacao.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, Loader2, Smartphone, WifiOff } from "lucide-react";
+import { Check, Loader2, Smartphone, WifiOff, CloudOff } from "lucide-react";
 import { authorizeThisDevice, fetchDeviceState } from "@/lib/sessions-api";
+import { classificarFalha, mensagemFalha, type EstadoFalha } from "@/lib/conexao";
+import { jaLiberado, marcarLiberado } from "@/lib/device";
 import type { PinResult } from "@/lib/pin";
 import { PinPad } from "@/components/PinPad";
 
-type Estado = "checando" | "liberado" | "precisa_senha" | "sem_internet";
+type Estado = "checando" | "liberado" | "precisa_senha" | "falha";
 
 /** Botao principal: grande, verde, impossivel de errar. */
-const BOTAO = "min-h-20 w-full rounded-2xl bg-primary px-6 font-display text-2xl font-extrabold text-primary-foreground shadow-button active:translate-y-1";
+const BOTAO =
+  "min-h-20 w-full rounded-2xl bg-primary px-6 font-display text-2xl font-extrabold text-primary-foreground shadow-button active:translate-y-1";
 
 export function DeviceGate({ children }: { children: ReactNode }) {
   const [estado, setEstado] = useState<Estado>("checando");
+  // Por que falhou: internet do celular, ou servidor. A tela muda o texto para
+  // nao mandar a pessoa "ligar a internet" quando o problema nao e dela.
+  const [falha, setFalha] = useState<EstadoFalha>("offline");
   const [erro, setErro] = useState<string | null>(null);
   // O teclado so aparece depois do toque, para a tela nao abrir cheia de botoes
   // sem explicacao. "Cancelar" volta para esta tela, nao fica reabrindo.
   const [pedindo, setPedindo] = useState(false);
 
+  const liberado = () => {
+    marcarLiberado();
+    setEstado("liberado");
+  };
+
   const checar = async () => {
     setErro(null);
+    // Servidor fora do ar nao pode trancar quem ja entrou: se este aparelho ja
+    // foi liberado antes, segue direto. A senha continua sendo pedida a cada
+    // toque, entao a trava real nao depende desta checagem.
+    if (jaLiberado()) {
+      setEstado("liberado");
+      return;
+    }
     setEstado("checando");
     try {
       const r = await fetchDeviceState();
       if (r.conhecido) {
-        setEstado("liberado");
+        liberado();
         return;
       }
       if (r.total === 0) {
@@ -36,12 +54,15 @@ export function DeviceGate({ children }: { children: ReactNode }) {
         // Sem gravar, todo aparelho novo continuaria sendo tratado como o
         // primeiro e a trava nunca passaria a valer.
         const novo = await authorizeThisDevice("");
-        setEstado(novo.ok ? "liberado" : "precisa_senha");
+        if (novo.ok) liberado();
+        else setEstado("precisa_senha");
         return;
       }
       setEstado("precisa_senha");
     } catch {
-      setEstado("sem_internet");
+      // Falhou: decide se a culpa e do aparelho (sem internet) ou do servidor.
+      setFalha(classificarFalha(typeof navigator === "undefined" || navigator.onLine));
+      setEstado("falha");
     }
   };
 
@@ -61,14 +82,16 @@ export function DeviceGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (estado === "sem_internet") {
+  if (estado === "falha") {
+    const m = mensagemFalha(falha);
+    const Icone = falha === "offline" ? WifiOff : CloudOff;
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 text-center">
-        <WifiOff className="h-16 w-16 text-warning" />
-        <h1 className="font-display text-3xl font-extrabold text-foreground">Sem internet</h1>
-        <p className="text-xl">Ligue a internet do celular e toque no botão.</p>
+        <Icone className="h-16 w-16 text-warning" />
+        <h1 className="font-display text-3xl font-extrabold text-foreground">{m.titulo}</h1>
+        <p className="text-xl">{m.detalhe}</p>
         <button onClick={() => void checar()} className={BOTAO}>
-          TENTAR DE NOVO
+          {m.acao}
         </button>
       </div>
     );
@@ -94,7 +117,10 @@ export function DeviceGate({ children }: { children: ReactNode }) {
       </div>
 
       {erro && (
-        <p role="alert" className="w-full rounded-2xl border-4 border-destructive bg-destructive px-4 py-4 text-xl font-bold text-destructive-foreground">
+        <p
+          role="alert"
+          className="w-full rounded-2xl border-4 border-destructive bg-destructive px-4 py-4 text-xl font-bold text-destructive-foreground"
+        >
           {erro}
         </p>
       )}
@@ -116,14 +142,18 @@ export function DeviceGate({ children }: { children: ReactNode }) {
         open={pedindo}
         action="liberar"
         onCancel={() => setPedindo(false)}
-        onOk={() => setEstado("liberado")}
+        onOk={() => liberado()}
         verify={async (pin): Promise<PinResult> => {
           try {
             const r = await authorizeThisDevice(pin);
-            if (!r.ok && r.motivo !== "senha_incorreta") setErro("Não foi possível liberar. Tente de novo.");
+            if (r.ok) marcarLiberado();
+            else if (r.motivo !== "senha_incorreta")
+              setErro("Não foi possível liberar. Tente de novo.");
             return r;
           } catch {
-            setErro("Sem internet. Confira a conexão e tente de novo.");
+            // Sem internet e servidor fora do ar chegam aqui do mesmo jeito;
+            // a mensagem nao culpa a conexao de quem digitou.
+            setErro("Não conseguimos falar com o servidor. Tente de novo.");
             return { ok: false, motivo: "sem_conexao", restantes: 0 };
           }
         }}

@@ -14,7 +14,7 @@ import {
 import {
   buildMonth, dayKey, earningsCents, fmtDate, fmtTime, formatBRL, formatDuration, sessionSeconds, tzParts, type Session,
 } from "@/lib/hours";
-import { formatCoords, geoLabel } from "@/lib/geo";
+import { geoAviso } from "@/lib/geo";
 
 export const Route = createFileRoute("/historico")({
   head: () => ({
@@ -398,14 +398,17 @@ function WeekTable({ week }: { week: ReturnType<typeof buildMonth>["weeks"][numb
                             {crosses && <div className="text-xs text-muted-foreground">{fmtDate(s.ended_at)}</div>}
                           </>
                         ) : <span className="font-bold text-destructive">em aberto</span>}
-                        {s && dur !== null && rows > 1 && <div className="text-xs text-muted-foreground">({formatDuration(dur)})</div>}
-                        {s && s.ended_at && (
-                          <div className="mt-1 text-[11px] leading-tight text-muted-foreground">
-                            <span className="inline-flex items-center gap-1 font-bold text-primary">
-                              <ShieldCheck className="h-3 w-3" /> Lacre
-                            </span>
-                            <div className="font-mono break-all">{s.session_hash ? `${s.session_hash.slice(0, 16)}…` : "—"}</div>
-                            <div>{geoLabel(s.end_geo_status ?? s.start_geo_status)}</div>
+                        {s && dur !== null && rows > 1 && (
+                          <div className="text-xs text-muted-foreground">({formatDuration(dur)})</div>
+                        )}
+                        {s?.ended_at && (
+                          <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-primary">
+                            <ShieldCheck className="h-3 w-3" /> verificado
+                          </div>
+                        )}
+                        {s?.ended_at && geoAviso(s.end_geo_status ?? s.start_geo_status) && (
+                          <div className="text-[11px] text-muted-foreground">
+                            {geoAviso(s.end_geo_status ?? s.start_geo_status)}
                           </div>
                         )}
                       </td>

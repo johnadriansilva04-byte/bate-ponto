@@ -2,6 +2,16 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { BUILD } from "./lib/version";
+
+// Registro de partida no log do servidor (Vercel → Deployments → Functions).
+// Serve para conferir, do lado de fora do celular, QUAL versao esta no ar e
+// desde quando. A falha de conexao com o banco aparece logo depois, com o nome
+// da funcao que falhou — e e isso que mostra a causa real em vez de "sem
+// internet".
+console.log(
+  `[meu-ponto] servidor iniciado — versão ${BUILD.versao}, código de ${BUILD.modificadoEm}`,
+);
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
